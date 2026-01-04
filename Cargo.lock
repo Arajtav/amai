@@ -6,9 +6,16 @@ version = 4
 name = "amai"
 version = "0.1.0"
 dependencies = [
+ "amai-vm",
  "clap",
  "colored",
 ]
+
+[[package]]
+name = "amai-vm"
+version = "0.0.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a875ef41ef56748ce564e0370ecbb412d029f67fdc91c1ce0cb8ee3332f2a210"
 
 [[package]]
 name = "anstream"

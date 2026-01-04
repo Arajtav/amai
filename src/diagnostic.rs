@@ -45,14 +45,14 @@ impl Diagnostic {
 
         output.push_str(&format!("{}: {}\n", "error".bright_red().bold(), self.primary_err));
         output.push_str(
-            &format!("{}{} {}:{}:{}\n", "-".repeat(digits_len as usize + 2).cyan().bold(), ">".cyan().bold(),
+            &format!("{}{} {}:{}:{}\n", " ".repeat(digits_len as usize + 1), "┌──".cyan().bold(),
             self.path, start_line + 1, start_col + 1)
         );
-        output.push_str(&format!("{:w$} {}\n", " ", "|".cyan().bold(), w = digits_len as usize));
+        output.push_str(&format!("{:w$} {}\n", " ", "│".cyan().bold(), w = digits_len as usize));
 
         for l_id in start_line..=end_line {
             let ltxt = lines[l_id];
-            output.push_str(&format!("{:w$} {} {ltxt}\n", (l_id + 1).to_string().cyan().bold(), "|".cyan().bold(), w = digits_len as usize));
+            output.push_str(&format!("{:w$} {} {ltxt}\n", (l_id + 1).to_string().cyan().bold(), "│".cyan().bold(), w = digits_len as usize));
 
             let mut carets = String::new();
             if l_id == start_line && l_id == end_line {
@@ -66,10 +66,44 @@ impl Diagnostic {
             } else {
                 carets.push_str(&"^".repeat(ltxt.len()).bright_red().bold().to_string());
             }
-            output.push_str(&format!("{:w$} {} {}\n", " ", "|".cyan().bold(), carets, w = digits_len as usize));
+            output.push_str(&format!("{:w$} {} {}\n", " ", "│".cyan().bold(), carets, w = digits_len as usize));
         }
 
-        output.push_str(&format!("{:w$} {}\n", " ", "|".cyan().bold(), w = digits_len as usize));
+        output.push_str(&format!("{:w$} {}\n", " ", "│".cyan().bold(), w = digits_len as usize));
+
+        for (msg, span) in &self.secondary_messages {
+            let start_line = determine_line(&line_starts, span.start);
+            let start_col = span.start - line_starts[start_line];
+            
+            let end_line = determine_line(&line_starts, span.start);
+            let end_col = span.end - line_starts[end_line];
+
+            let digits_len = (end_line + 1).ilog10() + 1;
+
+            if let Some(m) = msg { output.push_str(&format!("{m}\n")) }
+            output.push_str(&format!("{:w$} {}\n", " ", "│".cyan().bold(), w = digits_len as usize));
+
+            for l_id in start_line..=end_line {
+                let ltxt = lines[l_id];
+                output.push_str(&format!("{:w$} {} {ltxt}\n", (l_id + 1).to_string().cyan().bold(), "│".cyan().bold(), w = digits_len as usize));
+
+                let mut carets = String::new();
+                if l_id == start_line && l_id == end_line {
+                    carets.push_str(&" ".repeat(start_col));
+                    carets.push_str(&"^".repeat(end_col - start_col).bright_red().bold().to_string());
+                } else if l_id == start_line {
+                    carets.push_str(&" ".repeat(start_col));
+                    carets.push_str(&"^".repeat(ltxt.len() - start_col).bright_red().bold().to_string());
+                } else if l_id == end_line {
+                    carets.push_str(&"^".repeat(end_col).bright_red().bold().to_string());
+                } else {
+                    carets.push_str(&"^".repeat(ltxt.len()).bright_red().bold().to_string());
+                }
+                output.push_str(&format!("{:w$} {} {}\n", " ", "│".cyan().bold(), carets, w = digits_len as usize));
+            }
+
+            output.push_str(&format!("{:w$} {}\n", " ", "│".cyan().bold(), w = digits_len as usize));
+        }
 
         output
     }

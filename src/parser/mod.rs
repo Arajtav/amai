@@ -1,10 +1,12 @@
 pub mod ast;
 pub mod pattern;
+pub mod ftypes;
 
 use crate::{diagnostic::Diagnostic, operator::Operator};
 use super::lexer::token::*;
 use ast::*;
 use pattern::*;
+use ftypes::*;
 
 pub struct Parser<'p> {
     path: String,
@@ -26,16 +28,8 @@ impl<'p> Parser<'p> {
     }
 
     pub fn parse(&mut self) -> Result<AmaiASTModule, Vec<Diagnostic>> {
-        use std::path::PathBuf;
-
-        let module_name = PathBuf::from(&self.path)
-            .file_stem()
-            .unwrap()
-            .display()
-            .to_string();
-
         let mut module = AmaiASTModule {
-            name: module_name,
+            path: self.path.clone(),
             nodes: Vec::new(),
         };
         if self.tokens.is_empty() {
@@ -127,35 +121,35 @@ impl<'p> Parser<'p> {
                 self.pos += 1;
                 Ok(AmaiASTNode {
                     kind: AmaiASTNodeKind::IntLit( unsafe { token.literal.unwrap().integer } ),
-                    span: token.span.clone(),
+                    span: token.span,
                 })
             },
             TokenKind::FloatLit => {
                 self.pos += 1;
                 Ok(AmaiASTNode {
                     kind: AmaiASTNodeKind::FloatLit( unsafe { token.literal.unwrap().float } ),
-                    span: token.span.clone(),
+                    span: token.span,
                 })
             },
             TokenKind::True => {
                 self.pos += 1;
                 Ok(AmaiASTNode {
                     kind: AmaiASTNodeKind::Boolean(true),
-                    span: token.span.clone(),
+                    span: token.span,
                 })
             },
             TokenKind::False => {
                 self.pos += 1;
                 Ok(AmaiASTNode {
                     kind: AmaiASTNodeKind::Boolean(false),
-                    span: token.span.clone(),
+                    span: token.span,
                 })
             },
             TokenKind::Identifier => {
                 self.pos += 1;
                 Ok(AmaiASTNode {
                     kind: AmaiASTNodeKind::Identifier(token.lexeme),
-                    span: token.span.clone(),
+                    span: token.span,
                 })
             },
             TokenKind::Operator(op) if op.is_prefix() => {
@@ -244,6 +238,14 @@ impl<'p> Parser<'p> {
         let pat = self.parse_pattern()?;
         stmt_span.end = pat.span.end;
 
+        let ty = if self.expect(TokenKind::Colon).is_ok() {
+            let expr = self.parse_type()?;
+            stmt_span.end = expr.span.end;
+            Some(expr)
+        } else {
+            None
+        };
+
         let init = if self.expect(TokenKind::Operator(Operator::Assign)).is_ok() {
             let expr = self.parse_expr(0)?;
             stmt_span.end = expr.span.end;
@@ -254,7 +256,7 @@ impl<'p> Parser<'p> {
 
         Ok(AmaiASTNode {
             kind: AmaiASTNodeKind::LetDecl {
-                pat,
+                pat, ty,
                 init: init.map(|expr| Box::new(expr))
             },
             span: stmt_span,
@@ -268,6 +270,14 @@ impl<'p> Parser<'p> {
         let pat = self.parse_pattern()?;
         stmt_span.end = pat.span.end;
 
+        let ty = if self.expect(TokenKind::Colon).is_ok() {
+            let expr = self.parse_type()?;
+            stmt_span.end = expr.span.end;
+            Some(expr)
+        } else {
+            None
+        };
+
         let init = if self.expect(TokenKind::Operator(Operator::Assign)).is_ok() {
             let expr = self.parse_expr(0)?;
             stmt_span.end = expr.span.end;
@@ -278,7 +288,7 @@ impl<'p> Parser<'p> {
 
         Ok(AmaiASTNode {
             kind: AmaiASTNodeKind::VarDecl {
-                pat,
+                pat, ty,
                 init: init.map(|expr| Box::new(expr))
             },
             span: stmt_span,
@@ -333,6 +343,79 @@ impl<'p> Parser<'p> {
         })
     }
 
+    fn parse_type(&mut self) -> Result<FrontendType, Diagnostic> {
+        let token = if let Some(token) = self.current().cloned() {
+            token
+        } else {
+            return Err(Diagnostic::new(
+                &self.path,
+                "Expected type, found end of input",
+                self.tokens.last().unwrap().span.clone()
+            ));
+        };
+
+        match token.kind {
+            TokenKind::Identifier => {
+                self.pos += 1;
+                Ok(FrontendType {
+                    kind: FrontendTypeKind::Identifier(token.lexeme),
+                    span: token.span,
+                })
+            },
+            TokenKind::LParen => self.parse_type_paren(),
+            TokenKind::LSquare => {
+                self.pos += 1;
+                let inner_ty = self.parse_type()?;
+                self.expect(TokenKind::RSquare)?;
+                Ok(FrontendType {
+                    kind: FrontendTypeKind::Vector(Box::new(inner_ty)),
+                    span: token.span,
+                })
+            },
+            _ => Err(Diagnostic::new(
+                &self.path,
+                format!("Expected type, found {}", token.err_str()),
+                self.tokens.last().unwrap().span.clone()
+            )),
+        }
+    }
+
+    fn parse_type_paren(&mut self) -> Result<FrontendType, Diagnostic> {
+        let mut stmt_span = self.current().unwrap().span.clone();
+        self.pos += 1;
+
+        let mut in_tuple = false;
+        let mut items = Vec::new();
+        while let Some(token) = self.current() {
+            if token.kind == TokenKind::RParen { break }
+
+            let ty = self.parse_type()?;
+            items.push(ty);
+
+            if self.expect(TokenKind::Comma).is_ok() {
+                in_tuple = true;
+            } else {
+                break;
+            }
+        }
+
+        stmt_span.end = self.expect(TokenKind::RParen)?.span.end;
+        
+        if in_tuple {
+            Ok(FrontendType {
+                kind: FrontendTypeKind::Tuple(items),
+                span: stmt_span,
+            })
+        } else if items.len() == 1 {
+            Ok(items[0].clone())
+        } else {
+            Ok(FrontendType {
+                kind: FrontendTypeKind::Unit,
+                span: stmt_span,
+            })
+        }
+    }
+
     fn parse_pattern(&mut self) -> Result<Pattern, Diagnostic> {
         let token = if let Some(token) = self.current().cloned() {
             token
@@ -349,35 +432,35 @@ impl<'p> Parser<'p> {
                 self.pos += 1;
                 Ok(Pattern {
                     kind: PatternKind::Literal(PatternLiteral::Integer( unsafe { token.literal.unwrap().integer } )),
-                    span: token.span.clone(),
+                    span: token.span,
                 })
             },
             TokenKind::FloatLit => {
                 self.pos += 1;
                 Ok(Pattern {
                     kind: PatternKind::Literal(PatternLiteral::Float( unsafe { token.literal.unwrap().float } )),
-                    span: token.span.clone(),
+                    span: token.span,
                 })
             },
             TokenKind::True => {
                 self.pos += 1;
                 Ok(Pattern {
                     kind: PatternKind::Literal(PatternLiteral::Boolean(true)),
-                    span: token.span.clone(),
+                    span: token.span,
                 })
             },
             TokenKind::False => {
                 self.pos += 1;
                 Ok(Pattern {
                     kind: PatternKind::Literal(PatternLiteral::Boolean(false)),
-                    span: token.span.clone(),
+                    span: token.span,
                 })
             },
             TokenKind::Identifier => {
                 self.pos += 1;
                 Ok(Pattern {
                     kind: PatternKind::Identifier(token.lexeme),
-                    span: token.span.clone(),
+                    span: token.span,
                 })
             },
             _ => Err(Diagnostic::new(

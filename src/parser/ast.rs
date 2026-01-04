@@ -1,9 +1,9 @@
 use crate::{Span, operator::Operator};
-use super::pattern::Pattern;
+use super::{pattern::Pattern, ftypes::FrontendType};
 
 #[derive(Debug, Clone)]
 pub struct AmaiASTModule {
-    pub name: String,
+    pub path: String,
     pub nodes: Vec<AmaiASTNode>,
 }
 
@@ -28,10 +28,12 @@ pub enum AmaiASTNodeKind {
     },
     LetDecl {
         pat: Pattern,
+        ty: Option<FrontendType>,
         init: Option<Box<AmaiASTNode>>,
     },
     VarDecl {
         pat: Pattern,
+        ty: Option<FrontendType>,
         init: Option<Box<AmaiASTNode>>,
     },
     If {

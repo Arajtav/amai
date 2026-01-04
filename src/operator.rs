@@ -1,3 +1,5 @@
+use crate::semantic_checker::types::Type;
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Operator {
     Plus, Minus, Star, Slash, Modulo, // int ops
@@ -6,7 +8,7 @@ pub enum Operator {
     Eq, Ne, Gt, Lt, Ge, Le,
     Concat,
     Range, RangeInclus,
-    Tilde, // int NOT
+    Tilde, // bitwise NOT
     LogOr, LogAnd, Bang,
     Pipe, Ampersand, Caret,
     Lsh, LRsh, ARsh,
@@ -71,6 +73,62 @@ impl Operator {
             Operator::Lsh => "<<",
             Operator::LRsh => ">>>",
             Operator::ARsh => ">>",
+        }
+    }
+
+    pub fn infix_output(&self, lhs: &Type, rhs: &Type) -> Option<Type> {
+        match self {
+            Operator::Plus | Operator::Minus
+            | Operator::Star | Operator::Slash
+            | Operator::Modulo | Operator::Gt
+            | Operator::Lt | Operator::Ge
+            | Operator::Le => match (lhs, rhs) { // numeric
+                (Type::Int, Type::Int) => Some(Type::Int),
+                (Type::Float, Type::Float) => Some(Type::Float),
+                _ => None,
+            },
+            Operator::Concat => match (lhs, rhs) {
+                (Type::String, Type::String) => Some(Type::String),
+                (Type::Vector(l), Type::Vector(r))
+                    if l == r => Some(Type::Vector(l.clone())),
+                _ => None,
+            },
+            Operator::Range | Operator::RangeInclus
+            | Operator::Pipe | Operator::Ampersand
+            | Operator::Caret | Operator::Lsh
+            | Operator::LRsh | Operator::ARsh => if let (Type::Int, Type::Int) = (lhs, rhs) {
+                Some(Type::Int)
+            } else {
+                None
+            },
+            Operator::LogOr | Operator::LogAnd => if let (Type::Bool, Type::Bool) = (lhs, rhs) {
+                Some(Type::Bool)
+            } else {
+                None
+            },
+            Operator::Assign | Operator::PlusAssign
+            | Operator::MinusAssign | Operator::StarAssign
+            | Operator::SlashAssign | Operator::ModuloAssign => unreachable!("Assignations should be handled separately"),
+            Operator::Eq | Operator::Ne => if lhs == rhs {
+                Some(lhs.clone())
+            } else {
+                None
+            },
+            Operator::Tilde | Operator::Bang => unreachable!("Prefix ops should not be called here")
+        }
+    }
+
+    pub fn prefix_output(&self, operand: &Type) -> Option<Type> {
+        match self {
+            Operator::Plus | Operator::Minus => match operand { // numeric
+                Type::Int | Type::Float => Some(operand.clone()),
+                _ => None,
+            },
+            Operator::Tilde => if *operand == Type::Int { Some(Type::Int )}
+                else { None },
+            Operator::Bang => if *operand == Type::Bool { Some(Type::Bool )}
+                else { None },
+            _ => unreachable!("Infix ops should not be called here")
         }
     }
 }
