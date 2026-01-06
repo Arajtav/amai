@@ -1,7 +1,7 @@
 pub mod types;
 
 use std::collections::HashMap;
-use crate::{Span, diagnostic::Diagnostic, parser::ast::*};
+use crate::{Span, diagnostic::Diagnostic, parser::{ast::*, pattern::*, ftypes::*}};
 use types::*;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -15,11 +15,22 @@ pub struct Symbol {
 pub struct SemanticChecker<'t> {
     ast: &'t AmaiASTModule,
     symbols: Vec<HashMap<String, Symbol>>,
+    type_registry: HashMap<String, Type>,
 }
 
 impl<'t> SemanticChecker<'t> {
     pub fn new(ast: &'t AmaiASTModule) -> SemanticChecker<'t> {
-        SemanticChecker { ast, symbols: vec![HashMap::new()] }
+        let mut t = SemanticChecker {
+            ast, symbols: vec![HashMap::new()],
+            type_registry: HashMap::new()
+        };
+
+        t.type_registry.insert("int".to_string(), Type::Int);
+        t.type_registry.insert("float".to_string(), Type::Float);
+        t.type_registry.insert("string".to_string(), Type::String);
+        t.type_registry.insert("bool".to_string(), Type::Bool);
+
+        t
     }
 
     pub fn define_symbol(
@@ -91,6 +102,18 @@ impl<'t> SemanticChecker<'t> {
                 span,
             )
         );
+    }
+
+    pub fn resolve_type(&self, ftype: &FrontendType) -> Result<Type, Diagnostic> {
+        match ftype.kind {
+            FrontendTypeKind::Identifier(ident) => self.type_registry.get(&ident).cloned()
+                .ok_or(Diagnostic::new(&self.ast.path, format!("Cannot identifier type `{}`", ident), ftype.span)),
+            FrontendTypeKind::Unit => Ok(Type::Unit),
+            FrontendTypeKind::Vector(vec) => Ok(Type::Vector(Box::new(self.resolve_type(&vec)?))),
+            FrontendTypeKind::Tuple(tup) => {
+                let mut tup_items = Vec::new();
+            }
+        }
     }
 
     pub fn validate(&mut self) -> Result<(), Vec<Diagnostic>> {
@@ -191,6 +214,17 @@ impl<'t> SemanticChecker<'t> {
                     )
                 }
             },
+            AmaiASTNodeKind::LetDecl { pat, ty, init } => {
+                match pat.kind {
+                    PatternKind::Identifier(s) => {
+                        let var_ty = if let Some(ty) = ty {
+                            ty
+                        } else {
+                        };
+                    },
+                    PatternKind::Literal(s) => {},
+                }
+            }
             _ => todo!("{:#?}", node.kind),
         }
     }

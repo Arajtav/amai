@@ -14,7 +14,7 @@ impl Type {
             Type::Unit => "()".to_string(),
             Type::Unknown => "{unknown}".to_string(),
             Type::Vector(ty) => format!("[{}]", ty.display()),
-            Type::Tuple(ty) => format!("({})", ty.iter().map(|s| s.display()).collect::<Vec<_>>().join(", ")),
+            Type::Tuple(ty) => format!("({})", ty.iter().map(|s| format!("{}, ", s.display())).collect::<Vec<_>>().join("")),
         }
     }
 }
