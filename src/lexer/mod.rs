@@ -1,4 +1,4 @@
-pub(crate) mod token;
+pub mod token;
 
 use token::*;
 use crate::{common::{Operator, Span}, diagnostic::Diagnostic};
@@ -131,7 +131,7 @@ fn classify<'lex>(lex: &'lex str, span: Span) -> Option<Token<'lex>> {
     })
 }
 
-pub(crate) fn lex<'lex>(path: &str, source: &'lex str) -> Result<Vec<Token<'lex>>, Diagnostic> {
+pub fn lex<'lex>(path: &str, source: &'lex str) -> Result<Vec<Token<'lex>>, Diagnostic> {
     let mut chars = source.char_indices().peekable();
     let len = source.len();
 

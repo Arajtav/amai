@@ -2,7 +2,7 @@ use crate::common::{Operator, Span};
 use std::fmt;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub(crate) enum TokenType {
+pub enum TokenType {
     IntLit, FloatLit, StringLit, Operator(Operator),
     Identifier,
     Func, Let, Var, If, Else, While, For, In, Return, Extern, Export,
@@ -52,11 +52,11 @@ impl TokenType {
 }
 
 #[derive(Clone)]
-pub(crate) struct Token<'tk> {
-    pub(crate) ty: TokenType,
-    pub(crate) lit: Option<LexLiteral>,
-    pub(crate) lex: &'tk str,
-    pub(crate) span: Span,
+pub struct Token<'tk> {
+    pub ty: TokenType,
+    pub lit: Option<LexLiteral>,
+    pub lex: &'tk str,
+    pub span: Span,
 }
 
 impl Token<'_> {
@@ -91,7 +91,7 @@ impl fmt::Debug for Token<'_> {
 }
 
 #[derive(Clone, Copy)]
-pub(crate) union LexLiteral {
-    pub(crate) int_num: i64,
-    pub(crate) float_num: f64,
+pub union LexLiteral {
+    pub int_num: i64,
+    pub float_num: f64,
 }

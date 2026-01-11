@@ -8,6 +8,7 @@ mod diagnostic;
 
 use crate::cli::Cli;
 use colored::Colorize;
+use vm::{AmaiVM, value::Value, inst::*};
 
 fn main() {
     use clap::Parser;
@@ -73,29 +74,20 @@ pub fn run_cli(cli: Cli) -> Result<(), String> {
         }
     )?;
 
-    /*
-        let mut bcg = BytecodeGenerator::new(ast);
-        let bytes = bcg.generate();
+    let constants = [Value::from_int(5), Value::from_int(3)];
+    let mut vm = AmaiVM::new(&constants);
 
-        for byte in &bytes {
-            println!("{:#010X}", byte);
-        }
-        println!("{:#?}", &bcg.constants[0..10]);
-
-        let mut vm = AmaiVM::init();
-        vm.functions.push(Rc::new(Function {
-            chunk: Chunk {
-                code: bytes,
-                constants: bcg.constants.try_into().unwrap(),
-                lines: vec![]
-            },
-            arity: 0,
-            locals: 0,
-        }));
-        vm.call_function_from_idx(0)?;
-
-        vm.run()?;
-    */
+    let bytecode = [
+        LOAD, 0, 0, 0,
+        LOAD, 1, 1, 0,
+        IADD, 2, 0, 1,
+        HALT,
+    ];
+    vm.call_function(&bytecode, 2);
+    vm.run()
+        .map_err(|err|
+            format!("{}: {err}", "error".bright_red().bold())
+        )?;
 
     Ok(())
 }
