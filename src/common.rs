@@ -1,25 +1,25 @@
 use crate::semantic_checker::types::Type;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub enum Operator {
-    Plus, Minus, Star, Slash, Modulo, // int ops
+pub(crate) enum Operator {
+    Plus, Minus, Star, Slash, Modulo,
     Assign,
     PlusAssign, MinusAssign, StarAssign, SlashAssign, ModuloAssign,
     Eq, Ne, Gt, Lt, Ge, Le,
     Concat,
     Range, RangeInclus,
-    Tilde, // bitwise NOT
+    Tilde,
     LogOr, LogAnd, Bang,
     Pipe, Ampersand, Caret,
-    Lsh, LRsh, ARsh,
+    Lsh, Rsh,
 }
 
 impl Operator {
-    pub fn precedence(&self) -> (u32, u32) {
+    pub(crate) fn precedence(&self) -> (u32, u32) {
         match self {
             Operator::Star | Operator::Slash | Operator::Modulo => (120, 121),
             Operator::Plus | Operator::Minus => (110, 111),
-            Operator::Lsh | Operator::LRsh | Operator::ARsh => (100, 101),
+            Operator::Lsh | Operator::Rsh => (100, 101),
             Operator::Range | Operator::RangeInclus => (90, 91),
             Operator::Gt | Operator::Lt | Operator::Ge | Operator::Le => (80, 81),
             Operator::Eq | Operator::Ne => (70, 71),
@@ -33,11 +33,11 @@ impl Operator {
         }
     }
 
-    pub fn is_infix(&self) -> bool {
+    pub(crate) fn is_infix(&self) -> bool {
         ![Operator::Tilde, Operator::Bang].contains(self)
     }
 
-    pub fn is_prefix(&self) -> bool {
+    pub(crate) fn is_prefix(&self) -> bool {
         [Operator::Plus, Operator::Minus, Operator::Tilde, Operator::Bang].contains(self)
     }
 
@@ -71,8 +71,7 @@ impl Operator {
             Operator::Ampersand => "&",
             Operator::Caret => "^",
             Operator::Lsh => "<<",
-            Operator::LRsh => ">>>",
-            Operator::ARsh => ">>",
+            Operator::Rsh => ">>",
         }
     }
 
@@ -80,11 +79,15 @@ impl Operator {
         match self {
             Operator::Plus | Operator::Minus
             | Operator::Star | Operator::Slash
-            | Operator::Modulo | Operator::Gt
-            | Operator::Lt | Operator::Ge
-            | Operator::Le => match (lhs, rhs) { // numeric
+            | Operator::Modulo => match (lhs, rhs) { // numeric
                 (Type::Int, Type::Int) => Some(Type::Int),
                 (Type::Float, Type::Float) => Some(Type::Float),
+                _ => None,
+            },
+            | Operator::Gt
+            | Operator::Lt | Operator::Ge
+            | Operator::Le => match (lhs, rhs) { // numeric
+                (Type::Int, Type::Int) | (Type::Float, Type::Float) => Some(Type::Bool),
                 _ => None,
             },
             Operator::Concat => match (lhs, rhs) {
@@ -93,11 +96,15 @@ impl Operator {
                     if l == r => Some(Type::Vector(l.clone())),
                 _ => None,
             },
-            Operator::Range | Operator::RangeInclus
-            | Operator::Pipe | Operator::Ampersand
+            Operator::Pipe | Operator::Ampersand
             | Operator::Caret | Operator::Lsh
-            | Operator::LRsh | Operator::ARsh => if let (Type::Int, Type::Int) = (lhs, rhs) {
+            | Operator::Rsh => if let (Type::Int, Type::Int) = (lhs, rhs) {
                 Some(Type::Int)
+            } else {
+                None
+            },
+            Operator::Range | Operator::RangeInclus => if let (Type::Int, Type::Int) = (lhs, rhs) {
+                Some(Type::Vector(Box::new(Type::Int)))
             } else {
                 None
             },
@@ -110,7 +117,7 @@ impl Operator {
             | Operator::MinusAssign | Operator::StarAssign
             | Operator::SlashAssign | Operator::ModuloAssign => unreachable!("Assignations should be handled separately"),
             Operator::Eq | Operator::Ne => if lhs == rhs {
-                Some(lhs.clone())
+                Some(Type::Bool)
             } else {
                 None
             },
@@ -130,5 +137,17 @@ impl Operator {
                 else { None },
             _ => unreachable!("Infix ops should not be called here")
         }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct Span {
+    pub(crate) start: usize,
+    pub(crate) end: usize,
+}
+
+impl From<std::ops::Range<usize>> for Span {
+    fn from(value: std::ops::Range<usize>) -> Self {
+        Self { start: value.start, end: value.end }
     }
 }

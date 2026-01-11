@@ -1,4 +1,4 @@
-use crate::Span;
+use crate::common::Span;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Diagnostic {
@@ -38,7 +38,7 @@ impl Diagnostic {
         let start_line = determine_line(&line_starts, self.primary_span.start);
         let start_col = self.primary_span.start - line_starts[start_line];
         
-        let end_line = determine_line(&line_starts, self.primary_span.start);
+        let end_line = determine_line(&line_starts, self.primary_span.end);
         let end_col = self.primary_span.end - line_starts[end_line];
 
         let digits_len = (end_line + 1).ilog10() + 1;

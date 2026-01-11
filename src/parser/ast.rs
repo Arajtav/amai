@@ -1,54 +1,54 @@
-use crate::{Span, operator::Operator};
-use super::{pattern::Pattern, ftypes::FrontendType};
+use crate::common::*;
+use super::ftypes::FrontendType;
 
 #[derive(Debug, Clone)]
 pub struct AmaiASTModule {
     pub path: String,
-    pub nodes: Vec<AmaiASTNode>,
+    pub nodes: Vec<ASTNode>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum AmaiASTNodeKind {
+pub enum ASTNodeType {
     IntLit(i64),
     FloatLit(f64),
     Boolean(bool),
     Identifier(String),
-    Semi(Box<AmaiASTNode>),
-    Tuple(Vec<AmaiASTNode>),
-    Block(Vec<AmaiASTNode>),
+    Semi(Box<ASTNode>),
+    Tuple(Vec<ASTNode>),
+    Block(Vec<ASTNode>),
     Unit,
     BinaryOp {
         op: Operator,
-        lhs: Box<AmaiASTNode>,
-        rhs: Box<AmaiASTNode>,
+        lhs: Box<ASTNode>,
+        rhs: Box<ASTNode>,
     },
     UnaryOp {
         op: Operator,
-        operand: Box<AmaiASTNode>,
+        operand: Box<ASTNode>,
     },
     LetDecl {
-        pat: Pattern,
+        name: String,
         ty: Option<FrontendType>,
-        init: Option<Box<AmaiASTNode>>,
+        init: Option<Box<ASTNode>>,
     },
     VarDecl {
-        pat: Pattern,
+        name: String,
         ty: Option<FrontendType>,
-        init: Option<Box<AmaiASTNode>>,
+        init: Option<Box<ASTNode>>,
     },
     If {
-        condition: Box<AmaiASTNode>,
-        then_body: Box<AmaiASTNode>,
-        else_body: Option<Box<AmaiASTNode>>,
+        condition: Box<ASTNode>,
+        then_body: Box<ASTNode>,
+        else_body: Option<Box<ASTNode>>,
     },
     While {
-        condition: Box<AmaiASTNode>,
-        body: Box<AmaiASTNode>,
+        condition: Box<ASTNode>,
+        body: Box<ASTNode>,
     },
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct AmaiASTNode {
-    pub kind: AmaiASTNodeKind,
+pub struct ASTNode {
+    pub ty: ASTNodeType,
     pub span: Span,
 }

@@ -1,18 +1,13 @@
 mod lexer;
 mod parser;
 mod semantic_checker;
-mod bytecodegen;
-mod operator;
+mod vm;
+mod common;
 mod cli;
 mod diagnostic;
 
-use std::rc::Rc;
-
-use crate::{bytecodegen::BytecodeGenerator, cli::Cli};
+use crate::cli::Cli;
 use colored::Colorize;
-use amai_vm::{AmaiVM, Chunk, Function};
-
-type Span = std::ops::Range<usize>;
 
 fn main() {
     use clap::Parser;
@@ -30,7 +25,14 @@ pub fn run_cli(cli: Cli) -> Result<(), String> {
         .map_err(|_| format!("{}: No such file: {}", "error".bright_red().bold(), cli.input))?
         .replace("\r\n", "\n");
 
-    let tokens = lexer::tokenize(&contents);
+    let tokens = match lexer::lex(&cli.input, &contents) {
+        Ok(toks) => toks,
+        Err(err) => {
+            let lines = contents.lines().collect::<Vec<_>>();
+            let line_starts = line_starts(&contents);
+            return Err(err.display(&line_starts, &lines));
+        },
+    };
 
     if cli.debug {
         eprintln!("Tokens: [");
@@ -50,7 +52,7 @@ pub fn run_cli(cli: Cli) -> Result<(), String> {
                 err
                     .iter()
                     .map(|d| d.display(&line_starts, &lines))
-                    .collect::<Vec<_>>().join("\n\n")
+                    .collect::<Vec<_>>().join("\n")
             );
         },
     };
@@ -67,7 +69,7 @@ pub fn run_cli(cli: Cli) -> Result<(), String> {
             errors
                 .iter()
                 .map(|d| d.display(&line_starts, &lines))
-                .collect::<Vec<_>>().join("\n\n")
+                .collect::<Vec<_>>().join("\n")
         }
     )?;
 

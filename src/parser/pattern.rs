@@ -1,4 +1,4 @@
-use crate::Span;
+use crate::common::Span;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum PatternLiteral {
@@ -8,13 +8,13 @@ pub enum PatternLiteral {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum PatternKind {
+pub enum PatternType {
     Identifier(String),
     Literal(PatternLiteral),
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Pattern {
-    pub kind: PatternKind,
+    pub ty: PatternType,
     pub span: Span,
 }

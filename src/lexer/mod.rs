@@ -1,171 +1,355 @@
-pub mod token;
+pub(crate) mod token;
 
 use token::*;
-use crate::{Span, operator::Operator};
+use crate::{common::{Operator, Span}, diagnostic::Diagnostic};
 
 const MULTICHAR_SYMBOLS: &[&str] = &[
     "+=", "-=", "*=", "/=", "%=",
     "==", "!=", ">=", "<=",
     "||", "&&", "..", "..=",
-    "<<", ">>", "++",
+    "<<", ">>", "++", "->",
 ];
 
-fn classify(lex: &str, span: Span) -> Token {
-    let (kind, literal) = match lex {
-        "func" => (TokenKind::Func, None),
-        "let" => (TokenKind::Let, None),
-        "var" => (TokenKind::Var, None),
-        "if" => (TokenKind::If, None),
-        "else" => (TokenKind::Else, None),
-        "while" => (TokenKind::While, None),
-        "for" => (TokenKind::For, None),
-        "in" => (TokenKind::In, None),
-        "true" => (TokenKind::True, None),
-        "false" => (TokenKind::False, None),
-        "(" => (TokenKind::LParen, None),
-        ")" => (TokenKind::RParen, None),
-        "[" => (TokenKind::LSquare, None),
-        "]" => (TokenKind::RSquare, None),
-        "{" => (TokenKind::LCurly, None),
-        "}" => (TokenKind::RCurly, None),
-        ";" => (TokenKind::Semicolon, None),
-        ":" => (TokenKind::Colon, None),
-        "," => (TokenKind::Comma, None),
-        "." => (TokenKind::Dot, None),
-        "?" => (TokenKind::QuestionMark, None),
-        "#" => (TokenKind::Hashtag, None),
-        "+" => (TokenKind::Operator(Operator::Plus), None),
-        "-" => (TokenKind::Operator(Operator::Minus), None),
-        "*" => (TokenKind::Operator(Operator::Star), None),
-        "/" => (TokenKind::Operator(Operator::Slash), None),
-        "%" => (TokenKind::Operator(Operator::Modulo), None),
-        "=" => (TokenKind::Operator(Operator::Assign), None),
-        "+=" => (TokenKind::Operator(Operator::PlusAssign), None),
-        "-=" => (TokenKind::Operator(Operator::MinusAssign), None),
-        "*=" => (TokenKind::Operator(Operator::StarAssign), None),
-        "/=" => (TokenKind::Operator(Operator::SlashAssign), None),
-        "%=" => (TokenKind::Operator(Operator::ModuloAssign), None),
-        "==" => (TokenKind::Operator(Operator::Eq), None),
-        "!=" => (TokenKind::Operator(Operator::Ne), None),
-        ">" => (TokenKind::Operator(Operator::Gt), None),
-        "<" => (TokenKind::Operator(Operator::Lt), None),
-        ">=" => (TokenKind::Operator(Operator::Ge), None),
-        "<=" => (TokenKind::Operator(Operator::LogOr), None),
-        "|" => (TokenKind::Operator(Operator::Pipe), None),
-        "||" => (TokenKind::Operator(Operator::Ampersand), None),
-        "&" => (TokenKind::Operator(Operator::LogAnd), None),
-        "&&" => (TokenKind::Operator(Operator::Le), None),
-        "^" => (TokenKind::Operator(Operator::Caret), None),
-        "~" => (TokenKind::Operator(Operator::Tilde), None),
-        "!" => (TokenKind::Operator(Operator::Bang), None),
-        ".." => (TokenKind::Operator(Operator::Range), None),
-        "..=" => (TokenKind::Operator(Operator::RangeInclus), None),
-        "<<" => (TokenKind::Operator(Operator::Lsh), None),
-        ">>>" => (TokenKind::Operator(Operator::LRsh), None),
-        ">>" => (TokenKind::Operator(Operator::ARsh), None),
-        "++" => (TokenKind::Operator(Operator::Concat), None),
-        _ => if let Ok(int) = lex.parse::<i64>()
-            && lex.chars().all(|c| c.is_ascii_digit() || c == '_')
-        {
-            (TokenKind::IntLit, Some(LexLiteral { integer: int }))
-        } else if let Ok(float) = lex.parse::<f64>()
-            && lex.chars().all(|c| c.is_ascii_digit() || c == '_' || c == '.')
-        {
-            (TokenKind::FloatLit, Some(LexLiteral { float: float }))
-        } else {
-            (TokenKind::Identifier, None)
-        },
-    };
-
-    Token {
-        kind,
-        lexeme: lex.to_string(),
-        literal,
-        span,
+fn parse_int(string: &str) -> Option<i64> {
+    if string.starts_with("0x") {
+        let new = string.replace("_", "").to_ascii_lowercase();
+        i64::from_str_radix(&new[2..], 16).ok()
+    } else if string.starts_with("0b") {
+        let new = string.replace("_", "").to_ascii_lowercase();
+        i64::from_str_radix(&new[2..], 2).ok()
+    } else if string.starts_with("0o") {
+        let new = string.replace("_", "").to_ascii_lowercase();
+        i64::from_str_radix(&new[2..], 8).ok()
+    } else {
+        let new = string.replace("_", "").to_ascii_lowercase();
+        i64::from_str_radix(&new, 10).ok()
     }
 }
 
-pub fn tokenize(src: &str) -> Vec<Token> {
-    let chars = src.chars().collect::<Vec<_>>();
+fn parse_float(string: &str) -> Option<f64> {
+    let mut dot_found = false;
+    let mut float: f64 = 0.0;
+    let mut fraction_idx = 0.1;
+
+    for ch in string.chars() {
+        if ch == '.' {
+            if dot_found { return None }
+            dot_found = true;
+            continue;
+        }
+        if ch == '_' { continue }
+        if !ch.is_ascii_digit() {
+            return None;
+        }
+
+        let i = (ch as u8 - b'0') as f64;
+        if dot_found {
+            float += fraction_idx * i;
+            fraction_idx *= 0.1;
+        } else {
+            float = float * 10.0 + i;
+        }
+    }
+
+    Some(float)
+}
+
+fn classify<'lex>(lex: &'lex str, span: Span) -> Option<Token<'lex>> {
+    let (ty, lit) = match lex {
+        "func" => (TokenType::Func, None),
+        "let" => (TokenType::Let, None),
+        "var" => (TokenType::Var, None),
+        "if" => (TokenType::If, None),
+        "else" => (TokenType::Else, None),
+        "while" => (TokenType::While, None),
+        "for" => (TokenType::For, None),
+        "in" => (TokenType::In, None),
+        "return" => (TokenType::Return, None),
+        "extern" => (TokenType::Extern, None),
+        "export" => (TokenType::Export, None),
+        "true" => (TokenType::True, None),
+        "false" => (TokenType::False, None),
+        "(" => (TokenType::LParen, None),
+        ")" => (TokenType::RParen, None),
+        "[" => (TokenType::LSquare, None),
+        "]" => (TokenType::RSquare, None),
+        "{" => (TokenType::LCurly, None),
+        "}" => (TokenType::RCurly, None),
+        ";" => (TokenType::Semicolon, None),
+        ":" => (TokenType::Colon, None),
+        "," => (TokenType::Comma, None),
+        "." => (TokenType::Dot, None),
+        "?" => (TokenType::QuestionMark, None),
+        "#" => (TokenType::Hashtag, None),
+        "@" => (TokenType::At, None),
+        "->" => (TokenType::Arrow, None),
+        "+" => (TokenType::Operator(Operator::Plus), None),
+        "-" => (TokenType::Operator(Operator::Minus), None),
+        "*" => (TokenType::Operator(Operator::Star), None),
+        "/" => (TokenType::Operator(Operator::Slash), None),
+        "%" => (TokenType::Operator(Operator::Modulo), None),
+        "=" => (TokenType::Operator(Operator::Assign), None),
+        "+=" => (TokenType::Operator(Operator::PlusAssign), None),
+        "-=" => (TokenType::Operator(Operator::MinusAssign), None),
+        "*=" => (TokenType::Operator(Operator::StarAssign), None),
+        "/=" => (TokenType::Operator(Operator::SlashAssign), None),
+        "%=" => (TokenType::Operator(Operator::ModuloAssign), None),
+        "==" => (TokenType::Operator(Operator::Eq), None),
+        "!=" => (TokenType::Operator(Operator::Ne), None),
+        ">" => (TokenType::Operator(Operator::Gt), None),
+        "<" => (TokenType::Operator(Operator::Lt), None),
+        ">=" => (TokenType::Operator(Operator::Ge), None),
+        "<=" => (TokenType::Operator(Operator::Le), None),
+        "|" => (TokenType::Operator(Operator::Pipe), None),
+        "||" => (TokenType::Operator(Operator::LogOr), None),
+        "&" => (TokenType::Operator(Operator::Ampersand), None),
+        "&&" => (TokenType::Operator(Operator::LogAnd), None),
+        "^" => (TokenType::Operator(Operator::Caret), None),
+        "~" => (TokenType::Operator(Operator::Tilde), None),
+        "!" => (TokenType::Operator(Operator::Bang), None),
+        ".." => (TokenType::Operator(Operator::Range), None),
+        "..=" => (TokenType::Operator(Operator::RangeInclus), None),
+        "<<" => (TokenType::Operator(Operator::Lsh), None),
+        ">>" => (TokenType::Operator(Operator::Rsh), None),
+        "++" => (TokenType::Operator(Operator::Concat), None),
+        _ => if let Some(n) = parse_int(lex) {
+            (TokenType::IntLit, Some(LexLiteral { int_num: n }))
+        } else if let Some(n) = parse_float(lex) {
+            (TokenType::FloatLit, Some(LexLiteral { float_num: n }))
+        } else if lex.chars().all(|c| c == '_' || c.is_alphanumeric()) {
+            (TokenType::Identifier, None)
+        } else {
+            return None;
+        },
+    };
+
+    Some(Token {
+        ty,
+        lit,
+        lex,
+        span,
+    })
+}
+
+pub(crate) fn lex<'lex>(path: &str, source: &'lex str) -> Result<Vec<Token<'lex>>, Diagnostic> {
+    let mut chars = source.char_indices().peekable();
+    let len = source.len();
 
     let mut tokens = Vec::new();
-    let mut current = String::new();
-    let mut pos = 0usize;
     let mut tok_start = 0usize;
+    let mut in_string = false;
+    let mut skip = 0usize;
 
-    'lex_loop : while pos < chars.len() {
-        let ch = chars[pos];
+    while let Some((pos, ch)) = chars.next() {
+        if skip > 0 {
+            skip -= 1;
+            continue;
+        }
+
+        if in_string {
+            if ch == '"' {
+                tokens.push(Token {
+                    ty: TokenType::StringLit,
+                    lit: None,
+                    lex: &source[tok_start..pos],
+                    span: Span::from(tok_start..pos),
+                });
+                tok_start = pos + 1;
+                in_string = false;
+            }
+            continue;
+        }
 
         match ch {
-            '0'..='9' | 'a'..='z' | 'A'..='Z' | '_' => {
-                if current.is_empty() {
-                    tok_start = pos;
+            ' ' | '\r' | '\n' | '\t' => {
+                if tok_start < pos {
+                    let tok = classify(&source[tok_start..pos], Span::from(tok_start..pos));
+                    if let Some(tok) = tok {
+                        tokens.push(tok);
+                    } else {
+                        return Err(
+                            Diagnostic::new(
+                                path,
+                                format!("Unrecognized sequence of characters: `{:?}`", &source[tok_start..pos]),
+                                Span::from(tok_start..pos)
+                            )
+                        );
+                    }
                 }
-                current.push(ch);
-            },
-            _ if " \t\n\r".contains(ch) => if !current.is_empty() {
-                tokens.push(classify(&current, tok_start..pos));
+            
                 tok_start = pos+1;
-                current.clear();
+            },
+            c if c.is_alphanumeric() || c == '_' => continue,
+            '"' => {
+                in_string = true;
+                if tok_start < pos {
+                    let tok = classify(&source[tok_start..pos], Span::from(tok_start..pos));
+                    if let Some(tok) = tok {
+                        tokens.push(tok);
+                    } else {
+                        return Err(
+                            Diagnostic::new(
+                                path,
+                                format!("Unrecognized sequence of characters: `{:?}`", &source[tok_start..pos]),
+                                Span::from(tok_start..pos)
+                            )
+                        );
+                    }
+                }
+                tok_start = pos+1;
             },
             _ => {
                 if ch == '.' {
-                    if current.chars().all(|c| c.is_ascii_digit() || c == '_') {
-                        current.push(ch);
-                        pos += 1;
-
-                        continue;
-                    } else if current.is_empty() && pos+1 < chars.len() {
-                        if chars[pos].is_ascii_digit() {
-                            current.push(ch);
-                            pos += 1;
-
-                            continue;
+                    if (&source[tok_start..pos]).chars().all(|c| c.is_ascii_digit() || c == '_') {
+                        continue
+                    } else if tok_start == pos-1 && pos+1 < len {
+                        if ch.is_ascii_digit() {
+                            continue
                         }
                     }
                 }
-                if !current.is_empty() {
-                    tokens.push(classify(&current, tok_start..pos));
-                    current.clear();
+                if ch == '/' {
+                    if let Some((_, '/')) = chars.peek() {
+                        if tok_start < pos {
+                            let tok = classify(&source[tok_start..pos], Span::from(tok_start..pos));
+                            if let Some(tok) = tok {
+                                tokens.push(tok);
+                            } else {
+                                return Err(
+                                    Diagnostic::new(
+                                        path,
+                                        format!("Unrecognized sequence of characters: `{:?}`", &source[tok_start..pos]),
+                                        Span::from(tok_start..pos)
+                                    )
+                                );
+                            }
+                        }
+                        chars.next();
+                        let (mut pos, mut ch) = chars.next().unwrap();
+                        while pos < len {
+                            if ch == '\n' { break }
+                            (pos, ch) = chars.next().unwrap();
+                        }
+                        let (pos, _) = chars.next().unwrap();
+                        tok_start = pos;
+                        continue;
+                    }
+                    if let Some((_, '*')) = chars.peek() {
+                        if tok_start < pos {
+                            let tok = classify(&source[tok_start..pos], Span::from(tok_start..pos));
+                            if let Some(tok) = tok {
+                                tokens.push(tok);
+                            } else {
+                                return Err(
+                                    Diagnostic::new(
+                                        path,
+                                        format!("Unrecognized sequence of characters: `{:?}`", &source[tok_start..pos]),
+                                        Span::from(tok_start..pos)
+                                    )
+                                );
+                            }
+                            tok_start = pos;
+                        }
+                        chars.next();
+                        let (mut pos, mut ch) = chars.next().unwrap();
+                        let mut terminated = false;
+                        while pos < len {
+                            if ch == '*' {
+                                if let Some((_, '/')) = chars.peek() {
+                                    terminated = true;
+                                    chars.next();
+                                    (pos, _) = chars.next().unwrap();
+                                    break
+                                }
+                            }
+                            (pos, ch) = chars.next().unwrap();
+                        }
+                        if !terminated {
+                            return Err(
+                                Diagnostic::new(
+                                    path,
+                                    format!("Unterminated block comment"),
+                                    Span::from(tok_start..pos)
+                                )
+                            );
+                        }
+                        tok_start = pos+1;
+                        continue;
+                    }
+                }
+                if tok_start < pos {
+                    let tok = classify(&source[tok_start..pos], Span::from(tok_start..pos));
+                    if let Some(tok) = tok {
+                        tokens.push(tok);
+                    } else {
+                        return Err(
+                            Diagnostic::new(
+                                path,
+                                format!("Unrecognized sequence of characters: `{:?}`", &source[tok_start..pos]),
+                                Span::from(tok_start..pos)
+                            )
+                        );
+                    }
                 }
 
                 tok_start = pos;
 
+                let mut continue_main_loop = false;
                 for symbol in MULTICHAR_SYMBOLS {
-                    if pos + symbol.len() - 1 >= chars.len() {
+                    if pos + symbol.len() - 1 >= len {
                         continue
                     }
-
-                    let mut built_symbol = String::new();
-                    for i in 0..symbol.len() {
-                        built_symbol.push(chars[pos+i]);
-                    }
+                    
+                    let built_symbol = &source[pos..pos + symbol.len()];
 
                     if *symbol == built_symbol {
                         tokens.push(classify(
-                            symbol,
-                            tok_start..(pos + symbol.len())
-                        ));
-                        pos += symbol.len();
-                        continue 'lex_loop;
+                            &source[tok_start..(pos + symbol.len())],
+                            Span::from(tok_start..(pos + symbol.len()))
+                        ).unwrap());
+                        skip = symbol.len();
+                        tok_start = pos;
+                        continue_main_loop = true;
+                        break;
                     }
                 }
+                if continue_main_loop { continue }
 
-                tokens.push(classify(
-                    &ch.to_string(),
-                    tok_start..(pos + 1),
-                ));
+                let tok = classify(
+                    &source[pos..(pos + 1)],
+                    Span::from(pos..(pos + 1)),
+                );
+                if let Some(tok) = tok {
+                    tokens.push(tok);
+                } else {
+                    return Err(
+                        Diagnostic::new(
+                            path,
+                            format!("Unrecognized sequence of characters: `{:?}`", &source[tok_start..pos]),
+                            Span::from(tok_start..pos)
+                        )
+                    );
+                }
 
-                tok_start = pos+1;
+                tok_start = pos + 1;
             }
         }
-
-        pos += 1;
     }
 
-    if !current.is_empty() {
-        tokens.push(classify(&current, tok_start..pos));
+    if tok_start < len {
+        let tok = classify(&source[tok_start..len], Span::from(tok_start..len));
+        if let Some(tok) = tok {
+            tokens.push(tok);
+        } else {
+            return Err(
+                Diagnostic::new(
+                    path,
+                    format!("Unrecognized sequence of characters: `{:?}`", &source[tok_start..len]),
+                    Span::from(tok_start..len)
+                )
+            );
+        }
     }
 
-    tokens
+    Ok(tokens)
 }

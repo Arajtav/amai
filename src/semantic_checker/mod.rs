@@ -1,7 +1,7 @@
 pub mod types;
 
 use std::collections::HashMap;
-use crate::{Span, diagnostic::Diagnostic, parser::{ast::*, pattern::*, ftypes::*}};
+use crate::{common::Span, diagnostic::Diagnostic, parser::{ast::*, ftypes::*}};
 use types::*;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -47,7 +47,7 @@ impl<'t> SemanticChecker<'t> {
     pub fn mutate_symbol(
         &mut self,
         name: &str,
-        ty: Type,
+        ty: &Type,
         span: Span,
     ) -> Result<(), Diagnostic> {
         for scope in self.symbols.iter_mut().rev() {
@@ -61,7 +61,12 @@ impl<'t> SemanticChecker<'t> {
                         ).with_secondary_message(Some("Variable was defined here:"), symbol.defined_at.clone())
                     );
                 }
-                if symbol.ty != ty && symbol.ty != Type::Unknown {
+
+                if symbol.ty == Type::Unknown {
+                    symbol.ty = ty.clone();
+                    symbol.is_unitialized = false;
+                }
+                if symbol.ty != *ty {
                     return Err(
                         Diagnostic::new(
                             &self.ast.path,
@@ -69,11 +74,6 @@ impl<'t> SemanticChecker<'t> {
                             span,
                         ).with_secondary_message(Some("Variable was defined here:"), symbol.defined_at.clone())
                     );
-                }
-
-                if symbol.ty == Type::Unknown {
-                    symbol.ty = ty;
-                    symbol.is_unitialized = false;
                 }
                 return Ok(());
             }
@@ -105,13 +105,19 @@ impl<'t> SemanticChecker<'t> {
     }
 
     pub fn resolve_type(&self, ftype: &FrontendType) -> Result<Type, Diagnostic> {
-        match ftype.kind {
-            FrontendTypeKind::Identifier(ident) => self.type_registry.get(&ident).cloned()
+        match &ftype.ty {
+            FrontendTypeType::Identifier(ident) => self.type_registry.get(ident).cloned()
                 .ok_or(Diagnostic::new(&self.ast.path, format!("Cannot identifier type `{}`", ident), ftype.span)),
-            FrontendTypeKind::Unit => Ok(Type::Unit),
-            FrontendTypeKind::Vector(vec) => Ok(Type::Vector(Box::new(self.resolve_type(&vec)?))),
-            FrontendTypeKind::Tuple(tup) => {
+            FrontendTypeType::Unit => Ok(Type::Unit),
+            FrontendTypeType::Vector(vec) => Ok(Type::Vector(Box::new(self.resolve_type(vec)?))),
+            FrontendTypeType::Tuple(tup) => {
                 let mut tup_items = Vec::new();
+
+                for ty in tup {
+                    tup_items.push(self.resolve_type(ty)?);
+                }
+
+                Ok(Type::Tuple(tup_items))
             }
         }
     }
@@ -121,8 +127,8 @@ impl<'t> SemanticChecker<'t> {
         let mut diagnostics = Vec::new();
 
         for node in nodes {
-            if let Err(diag) = self.validate_node(&node) {
-                diagnostics.push(diag);
+            if let Err(diag) = self.validate_node(&node, false) {
+                diagnostics.extend(diag);
             }
         }
 
@@ -133,56 +139,56 @@ impl<'t> SemanticChecker<'t> {
         Ok(())
     }
 
-    pub fn validate_node(&mut self, node: &AmaiASTNode) -> Result<Type, Diagnostic> {
-        match &node.kind {
-            AmaiASTNodeKind::IntLit(_) => Ok(Type::Int),
-            AmaiASTNodeKind::FloatLit(_) => Ok(Type::Float),
-            AmaiASTNodeKind::Boolean(_) => Ok(Type::Bool),
-            AmaiASTNodeKind::Identifier(s) =>
-                self
-                    .find_symbol(s, node.span.clone())
-                    .map(|sy| sy.ty.clone()),
-            AmaiASTNodeKind::Semi(stmt) => {
-                self.validate_node(stmt)?;
+    pub fn validate_node(&mut self, node: &ASTNode, force_exhaustive: bool) -> Result<Type, Vec<Diagnostic>> {
+        match &node.ty {
+            ASTNodeType::IntLit(_) => Ok(Type::Int),
+            ASTNodeType::FloatLit(_) => Ok(Type::Float),
+            ASTNodeType::Boolean(_) => Ok(Type::Bool),
+            ASTNodeType::Identifier(s) => self
+                .find_symbol(s, node.span.clone())
+                .map(|sy| sy.ty.clone())
+                .map_err(|err| vec![err]),
+            ASTNodeType::Semi(stmt) => {
+                self.validate_node(stmt, false)?;
                 Ok(Type::Unit)
             },
-            AmaiASTNodeKind::Tuple(items) => {
+            ASTNodeType::Tuple(items) => {
                 let mut item_tys = Vec::new();
 
                 for i in items {
-                    item_tys.push(self.validate_node(i)?);
+                    item_tys.push(self.validate_node(i, true)?);
                 }
 
                 Ok(Type::Tuple(item_tys))
             },
-            AmaiASTNodeKind::Block(stmts) => {
+            ASTNodeType::Block(stmts) => {
                 let mut last_ty = Type::Unit;
 
                 for stmt in stmts {
-                    last_ty = self.validate_node(stmt)?;
+                    last_ty = self.validate_node(stmt, false)?;
                 }
 
                 Ok(last_ty)
             },
-            AmaiASTNodeKind::Unit => Ok(Type::Unit),
-            AmaiASTNodeKind::BinaryOp { op, lhs, rhs } => {
-                match &lhs.kind {
-                    AmaiASTNodeKind::Identifier(s) => {
-                        let rhs_ty = self.validate_node(rhs)?;
-                        self.mutate_symbol(s, rhs_ty, node.span.clone())?;
+            ASTNodeType::Unit => Ok(Type::Unit),
+            ASTNodeType::BinaryOp { op, lhs, rhs } => {
+                match &lhs.ty {
+                    ASTNodeType::Identifier(s) => {
+                        let rhs_ty = self.validate_node(rhs, true)?;
+                        self.mutate_symbol(s, &rhs_ty, node.span.clone()).map_err(|err| vec![err])?;
                         return Ok(Type::Unit);
                     },
                     _ => {},
                 }
                 
-                let lhs_ty = self.validate_node(lhs)?;
-                let rhs_ty = self.validate_node(rhs)?;
+                let lhs_ty = self.validate_node(lhs, true)?;
+                let rhs_ty = self.validate_node(rhs, true)?;
 
                 if let Some(output) = op.infix_output(&lhs_ty, &rhs_ty) {
                     Ok(output)
                 } else {
                     Err(
-                        Diagnostic::new(
+                        vec![Diagnostic::new(
                             &self.ast.path,
                             format!(
                                 "Cannot apply `{}` as an infix operator on types `{}` and `{}`",
@@ -191,18 +197,18 @@ impl<'t> SemanticChecker<'t> {
                                 rhs_ty.display()
                             ),
                             node.span.clone(),
-                        )
+                        )]
                     )
                 }
             },
-            AmaiASTNodeKind::UnaryOp { op, operand} => {
-                let operand_ty = self.validate_node(operand)?;
+            ASTNodeType::UnaryOp { op, operand} => {
+                let operand_ty = self.validate_node(operand, true)?;
 
                 if let Some(output) = op.prefix_output(&operand_ty) {
                     Ok(output)
                 } else {
                     Err(
-                        Diagnostic::new(
+                        vec![Diagnostic::new(
                             &self.ast.path,
                             format!(
                                 "Cannot apply `{}` as a unary operator on type `{}`",
@@ -210,22 +216,164 @@ impl<'t> SemanticChecker<'t> {
                                 operand_ty.display()
                             ),
                             node.span.clone(),
-                        )
+                        )]
                     )
                 }
             },
-            AmaiASTNodeKind::LetDecl { pat, ty, init } => {
-                match pat.kind {
-                    PatternKind::Identifier(s) => {
-                        let var_ty = if let Some(ty) = ty {
-                            ty
-                        } else {
-                        };
-                    },
-                    PatternKind::Literal(s) => {},
+            ASTNodeType::LetDecl { name, ty, init } => {
+                let mut var_ty = if let Some(ty) = ty {
+                    self.resolve_type(ty).map_err(|err| vec![err])?
+                } else {
+                    Type::Unknown
+                };
+                if let Some(i) = init {
+                    let init_ty = self.validate_node(i, true)?;
+                    if var_ty == Type::Unknown {
+                        var_ty = init_ty.clone();
+                    }
+                    if init_ty != var_ty {
+                        return Err(
+                            vec![Diagnostic::new(
+                                &self.ast.path,
+                                format!(
+                                    "Variable `{name}` is declared as `{}` but initialized as `{}`",
+                                    var_ty.display(),
+                                    init_ty.display(),
+                                ),
+                                node.span.clone(),
+                            )]
+                        )
+                    }
+                    self.define_symbol(
+                        name,
+                        var_ty,
+                        false,
+                        true,
+                        node.span
+                    );
+                } else {
+                    self.define_symbol(
+                        name,
+                        var_ty,
+                        false,
+                        false,
+                        node.span
+                    );
                 }
-            }
-            _ => todo!("{:#?}", node.kind),
+
+                Ok(Type::Unit)
+            },
+            ASTNodeType::VarDecl { name, ty, init } => {
+                let mut var_ty = if let Some(ty) = ty {
+                    self.resolve_type(ty).map_err(|err| vec![err])?
+                } else {
+                    Type::Unknown
+                };
+                if let Some(i) = init {
+                    let init_ty = self.validate_node(i, true)?;
+                    if var_ty == Type::Unknown {
+                        var_ty = init_ty.clone();
+                    }
+                    if init_ty != var_ty {
+                        return Err(
+                            vec![Diagnostic::new(
+                                &self.ast.path,
+                                format!(
+                                    "Variable `{name}` is declared as `{}` but initialized as `{}`",
+                                    var_ty.display(),
+                                    init_ty.display(),
+                                ),
+                                node.span.clone(),
+                            )]
+                        )
+                    }
+                    self.define_symbol(
+                        name,
+                        var_ty,
+                        true,
+                        true,
+                        node.span
+                    );
+                } else {
+                    self.define_symbol(
+                        name,
+                        var_ty,
+                        true,
+                        false,
+                        node.span
+                    );
+                }
+
+                Ok(Type::Unit)
+            },
+            ASTNodeType::If { condition, then_body, else_body } => {
+                let mut errors = Vec::new();
+                let cond_ty = self.validate_node(condition, true)?;
+                if cond_ty != Type::Bool {
+                    errors.push(
+                        Diagnostic::new(
+                            &self.ast.path,
+                            "Expected boolean condition in `if`",
+                            condition.span.clone(),
+                        )
+                    )
+                }
+
+                let then_body_ty = self.validate_node(then_body, force_exhaustive)?;
+                if force_exhaustive {
+                    if let Some(else_body) = else_body {
+                        let else_body_ty = self.validate_node(else_body, force_exhaustive)?;
+
+                        if else_body_ty != then_body_ty {
+                            errors.push(
+                                Diagnostic::new(
+                                    &self.ast.path,
+                                    format!(
+                                        "`if`'s clauses has different return types: `{}` and `{}`",
+                                        then_body_ty.display(), else_body_ty.display(),
+                                    ),
+                                    node.span.clone(),
+                                )
+                            );
+                            Err(errors)
+                        } else {
+                            Ok(then_body_ty)
+                        }
+                    } else {
+                        errors.push(
+                            Diagnostic::new(
+                                &self.ast.path,
+                                format!(
+                                    "Missing `else` clause that evaluates to type `{}`",
+                                    then_body_ty.display(),
+                                ),
+                                node.span.clone(),
+                            )
+                        );
+                        Err(errors)
+                    }
+                } else {
+                    Ok(Type::Unit)
+                }
+            },
+            ASTNodeType::While { condition, body } => {
+                let mut errors = Vec::new();
+                let cond_ty = self.validate_node(condition, true)?;
+                if cond_ty != Type::Bool {
+                    errors.push(
+                        Diagnostic::new(
+                            &self.ast.path,
+                            "Expected boolean condition in `while`",
+                            condition.span.clone(),
+                        )
+                    )
+                }
+
+                let _ = self.validate_node(body, force_exhaustive).inspect_err(|err| errors.extend_from_slice(err.as_slice()));
+                if !errors.is_empty() { return Err(errors) }
+                Ok(Type::Unit)
+            },
+            //_ => todo!("{:#?}", node.ty),
         }
     }
 }

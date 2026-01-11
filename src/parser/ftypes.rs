@@ -1,7 +1,7 @@
-use crate::Span;
+use crate::common::Span;
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum FrontendTypeKind {
+pub enum FrontendTypeType {
     Identifier(String),
     Vector(Box<FrontendType>),
     Tuple(Vec<FrontendType>),
@@ -10,6 +10,6 @@ pub enum FrontendTypeKind {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct FrontendType {
-    pub kind: FrontendTypeKind,
+    pub ty: FrontendTypeType,
     pub span: Span,
 }
