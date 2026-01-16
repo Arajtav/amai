@@ -1,7 +1,7 @@
 pub mod types;
 
 use std::{collections::HashMap, path::PathBuf};
-use crate::{common::Span, diagnostic::Diagnostic, parser::{ast::*, ftypes::*}};
+use crate::{common::{Operator, Span}, diagnostic::Diagnostic, parser::{ast::*, ftypes::*}};
 use types::*;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -156,13 +156,44 @@ impl SemanticChecker {
             },
             ASTNodeType::Unit => Ok(Type::Unit),
             ASTNodeType::BinaryOp { op, lhs, rhs, op_tys } => {
-                match &lhs.ty {
-                    ASTNodeType::Identifier(s) => {
-                        let rhs_ty = self.validate_node(rhs, true)?;
-                        self.mutate_symbol(s, &rhs_ty, node.span.clone()).map_err(|err| vec![err])?;
-                        return Ok(Type::Unit);
-                    },
-                    _ => {},
+                if [
+                    Operator::Assign,
+                    Operator::PlusAssign,
+                    Operator::MinusAssign,
+                    Operator::StarAssign,
+                    Operator::SlashAssign,
+                    Operator::ModuloAssign
+                    ].contains(op)
+                {
+                    match &lhs.ty {
+                        ASTNodeType::Identifier(s) => {
+                            let rhs_ty = self.validate_node(rhs, true)?;
+                            self.mutate_symbol(s, &rhs_ty, node.span.clone()).map_err(|err| vec![err])?;
+                            let sym = self
+                                .find_symbol(s, node.span)
+                                .map_err(|err| vec![err])?.clone();
+                            if *op != Operator::Assign && ![Type::Int, Type::Float].contains(&sym.ty)
+                            {
+                                return Err(
+                                    vec![Diagnostic::new(
+                                        self.path.display(),
+                                        format!("Cannot use arithmetic mutation on variable of type `{}`", sym.ty.display()),
+                                        node.span.clone(),
+                                    ).with_secondary_message(Some(format!("Variable `{s}` was defined here:")), sym.defined_at)]
+                                )
+                            }
+                            let var_ty = sym.ty;
+                            *op_tys = Some((var_ty, rhs_ty));
+                            return Ok(Type::Unit);
+                        },
+                        _ => return Err(
+                            vec![Diagnostic::new(
+                                self.path.display(),
+                                "Can only mutate variables",
+                                node.span.clone(),
+                            )]
+                        ),
+                    }
                 }
                 
                 let lhs_ty = self.validate_node(lhs, true)?;
@@ -186,10 +217,11 @@ impl SemanticChecker {
                     )
                 }
             },
-            ASTNodeType::UnaryOp { op, operand} => {
+            ASTNodeType::UnaryOp { op, operand, op_ty} => {
                 let operand_ty = self.validate_node(operand, true)?;
 
                 if let Some(output) = op.prefix_output(&operand_ty) {
+                    *op_ty = Some(operand_ty);
                     Ok(output)
                 } else {
                     Err(

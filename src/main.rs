@@ -6,6 +6,7 @@ mod vm;
 mod common;
 mod cli;
 mod diagnostic;
+mod tools;
 
 use crate::cli::{Cli, Command};
 use colored::Colorize;
@@ -20,13 +21,17 @@ fn main() {
 }
 
 pub fn run_cli(cli: Cli) -> Result<(), String> {
+    match cli.command {
+        Command::Run { input, show_bytecode } => match input {
+            Some(path) => run_path(&path, show_bytecode),
+            None => Err(format!("{}: Project runs are not supported for now", "error".bright_red().bold())),
+        }
+    }
+}
+
+pub fn run_path(input: &str, show_bytecode: bool) -> Result<(), String> {
     use std::fs;
 
-    let input = if let Command::Run { input } = cli.command {
-        input.ok_or(format!("{}: Project runs are not supported yet", "error".bright_red().bold()))?
-    } else {
-        return Err(format!("{}: Unsupported command", "error".bright_red().bold()))
-    };
     let contents = fs::read_to_string(&input)
         .map_err(|_| format!("{}: No such file: `{}`", "error".bright_red().bold(), input.italic()))?
         .replace("\r\n", "\n");
@@ -66,14 +71,22 @@ pub fn run_cli(cli: Cli) -> Result<(), String> {
             .collect::<Vec<_>>().join("\n")
     })?;
 
-    /*
-    let mut bcg = codegen::BytecodeGenerator::new(&ast);
-    let main_id = bcg.generate();
-    let mut vm = bcg.prepare_vm();
+    let mut astc = codegen::ASTCompiler::new();
+    let f = astc.compile(&ast);
+    
+    let mut vm = vm::AmaiVM::new(astc.constants(), false);
 
-    vm.call_function(main_id);
+    if show_bytecode {
+        let disassembled = tools::bytecode_disassembler::disassemble(&f);
+        println!("{disassembled}");
+    }
+
+    vm.add_function(f.into_boxed_slice());
+    vm.call_function(0, Box::new([]));
+    let current = std::time::Instant::now();
     vm.run().map_err(|err| format!("{}: {err}", "error".bright_red().bold()))?;
-    vm.return_function();*/
+    println!("Program ended in {:.2}s", current.elapsed().as_secs_f32());
+    vm.return_function();
 
     Ok(())
 }

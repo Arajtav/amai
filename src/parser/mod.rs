@@ -158,7 +158,7 @@ impl<'p> Parser<'p> {
                 let operand = self.parse_primary()?;
                 let span = token.span.start..operand.span.end;
                 Ok(ASTNode {
-                    ty: ASTNodeType::UnaryOp { op, operand: Box::new(operand) },
+                    ty: ASTNodeType::UnaryOp { op, operand: Box::new(operand), op_ty: None },
                     span: span.into(),
                 })
             },

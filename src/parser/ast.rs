@@ -27,6 +27,7 @@ pub enum ASTNodeType {
     UnaryOp {
         op: Operator,
         operand: Box<ASTNode>,
+        op_ty: Option<Type>,
     },
     LetDecl {
         name: String,

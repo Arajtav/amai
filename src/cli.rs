@@ -15,5 +15,8 @@ pub struct Cli {
 pub enum Command {
     Run {
         input: Option<String>,
+        
+        #[arg(short, long)]
+        show_bytecode: bool,
     }
 }
