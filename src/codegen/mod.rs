@@ -319,6 +319,9 @@ impl ASTCompiler {
                     self.compile_node(i, output_buf, 0);
                     output_buf.push((MOVE as u32 | ((reg as u32) << 8), node.span))
                 }
+
+                let const_id = self.add_constant(ValueBuilder::Unit);
+                output_buf.push((LOAD as u32 | ((dest as u32) << 8) | ((const_id as u32) << 16), node.span));
             },
             ASTNodeType::If { condition, then_body, else_body } => {
                 self.compile_node(condition, output_buf, 0);
