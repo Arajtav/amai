@@ -3,7 +3,6 @@ use super::arena::Arena;
 #[derive(Debug, Clone, Copy, PartialEq, Hash, Eq)]
 pub struct Value(pub u64);
 
-#[allow(unused)]
 impl Value {
     #[inline(always)]
     pub fn from_int(x: i64) -> Self {
@@ -36,7 +35,7 @@ impl Value {
     pub fn to_float(&self) -> f64 {
         f64::from_bits(self.0)
     }
-    
+
     #[inline(always)]
     pub fn from_ptr(addr: usize) -> Self {
         Self(addr as u64)

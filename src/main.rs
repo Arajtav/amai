@@ -1,3 +1,6 @@
+#![allow(unused)]
+#![allow(clippy::inline_always)]
+
 mod lexer;
 mod parser;
 mod semantic_checker;
@@ -76,7 +79,7 @@ pub fn run_path(input: &str, show_bytecode: bool) -> Result<(), String> {
 
 fn line_starts(s: &str) -> Vec<usize> {
     let mut indices = vec![0];
-    
+
     for (i, ch) in s.char_indices() {
         if ch == '\n' {
             indices.push(i + 1);

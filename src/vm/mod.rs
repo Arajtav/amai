@@ -35,7 +35,6 @@ impl AmaiVM {
         }
     }
 
-    #[allow(unused)]
     pub fn add_extern_fn<F: Fn(&mut AmaiVM, &[Value]) + 'static>(&mut self, f: F) -> u32 {
         self.external_functions.push(Rc::new(f));
         self.external_functions.len() as u32 - 1
@@ -93,7 +92,6 @@ impl AmaiVM {
     }
 
     #[inline(always)]
-    #[allow(unsafe_op_in_unsafe_fn)]
     pub unsafe fn cycle(&mut self) -> Result<(), (String, Span)> {
         if self.frames.is_empty() {
             self.running = false;

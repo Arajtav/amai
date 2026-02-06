@@ -12,12 +12,12 @@ use ftypes::*;
 
 pub struct Parser<'p> {
     path: PathBuf,
-    tokens: &'p Box<[Token<'p>]>,
+    tokens: &'p[Token<'p>],
     pos: usize,
 }
 
 impl<'p> Parser<'p> {
-    pub fn new<P: AsRef<Path>>(path: P, tokens: &'p Box<[Token]>) -> Parser<'p> {
+    pub fn new<P: AsRef<Path>>(path: P, tokens: &'p [Token]) -> Parser<'p> {
         Parser {
             path: path.as_ref().to_path_buf(),
             tokens,
@@ -87,7 +87,7 @@ impl<'p> Parser<'p> {
 
     fn parse_expr(&mut self, min_bp: u32) -> Result<ASTNode, Diagnostic> {
         let mut lhs = self.parse_primary()?;
-        
+
         while let Some(Token { ty: TokenType::Operator(op), .. }) = self.tokens.get(self.pos).cloned() {
             if !op.is_infix() { break }
             let (lbp, rbp) = op.precedence();
@@ -118,17 +118,17 @@ impl<'p> Parser<'p> {
         };
 
         match token.ty {
-            TokenType::IntLit => {
+            TokenType::IntLit(v) => {
                 self.pos += 1;
                 Ok(ASTNode {
-                    ty: ASTNodeType::IntLit( unsafe { token.lit.unwrap().int_num } ),
+                    ty: ASTNodeType::IntLit(v),
                     span: token.span,
                 })
             },
-            TokenType::FloatLit => {
+            TokenType::FloatLit(v) => {
                 self.pos += 1;
                 Ok(ASTNode {
-                    ty: ASTNodeType::FloatLit( unsafe { token.lit.unwrap().float_num } ),
+                    ty: ASTNodeType::FloatLit(v),
                     span: token.span,
                 })
             },
