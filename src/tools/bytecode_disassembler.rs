@@ -12,6 +12,21 @@ pub fn disassemble(bytecode: &[u32]) -> String {
             }};
         }
 
+        macro_rules! decode_args {
+            ([$($ty:ty),+ $(,)?]) => {{
+                let mut shift = 8;
+                (
+                    $(
+                        {
+                            let val = get_arg!($ty, shift);
+                            shift += std::mem::size_of::<$ty>() * 8;
+                            val
+                        }
+                    ),+
+                )
+            }};
+        }
+
         let Ok(opcode) = Opcode::try_from(get_arg!(u8, 0)) else {
             todo!()
         };
@@ -26,8 +41,7 @@ pub fn disassemble(bytecode: &[u32]) -> String {
 
         match opcode {
             Opcode::LOAD | Opcode::CARG => {
-                let dest = get_arg!(u8, 8);
-                let const_id = get_arg!(u16, 16);
+                let (dest, const_id) = decode_args!([u8, u16]);
                 write_out!(" r{dest} #{const_id}");
             }
             Opcode::IADD
@@ -60,14 +74,11 @@ pub fn disassemble(bytecode: &[u32]) -> String {
             | Opcode::SCON
             | Opcode::SCEQ
             | Opcode::SCNE => {
-                let dest = get_arg!(u8, 8);
-                let src1 = get_arg!(u8, 16);
-                let src2 = get_arg!(u8, 24);
+                let (dest, src1, src2) = decode_args!([u8, u8, u8]);
                 write_out!(" r{dest} r{src1} r{src2}");
             }
             Opcode::BNOT | Opcode::LNOT | Opcode::INEG | Opcode::FNEG | Opcode::MOVE => {
-                let dest = get_arg!(u8, 8);
-                let src1 = get_arg!(u8, 16);
+                let (dest, src1) = decode_args!([u8, u8]);
                 write_out!(" r{dest} r{src1}");
             }
             Opcode::JUMP => {
@@ -80,13 +91,12 @@ pub fn disassemble(bytecode: &[u32]) -> String {
                 write_out!(" {dest}");
             }
             Opcode::JITR | Opcode::JIFL => {
-                let a = get_arg!(i16, 8);
+                let (a, src1) = decode_args!([i16, u8]);
                 let dest = if a >= 0 {
                     format!("+{a}")
                 } else {
                     a.to_string()
                 };
-                let src1 = get_arg!(u8, 24);
                 write_out!(" {dest} r{src1}");
             }
             Opcode::CALL => {
