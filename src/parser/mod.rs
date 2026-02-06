@@ -1,18 +1,16 @@
 pub mod ast;
-//pub mod pattern;
 pub mod ftypes;
 
 use std::path::{Path, PathBuf};
 
-use crate::{diagnostic::Diagnostic, common::Operator};
-use super::lexer::token::*;
-use ast::*;
-//use pattern::*;
-use ftypes::*;
+use super::lexer::token::{Token, TokenType};
+use crate::{common::{Operator, Span}, diagnostic::Diagnostic};
+use ast::{ASTModule, ASTNode, ASTNodeType};
+use ftypes::{FrontendType, FrontendTypeType};
 
 pub struct Parser<'p> {
     path: PathBuf,
-    tokens: &'p[Token<'p>],
+    tokens: &'p [Token<'p>],
     pos: usize,
 }
 
@@ -30,7 +28,7 @@ impl<'p> Parser<'p> {
         if self.tokens.is_empty() {
             return Ok(ASTModule {
                 path: self.path.clone(),
-                nodes: module.into_boxed_slice(),
+                nodes: module,
             });
         }
         let mut diagnostics = Vec::new();
@@ -42,7 +40,7 @@ impl<'p> Parser<'p> {
                 Err(err) => {
                     diagnostics.push(err);
                     while let Some(token) = self.tokens.get(self.pos) {
-                        // syncronize
+                        // synchronize
                         if token.ty == TokenType::Semicolon
                             || token.ty == TokenType::RCurly
                             || token.ty == TokenType::RParen
@@ -54,7 +52,7 @@ impl<'p> Parser<'p> {
                         self.pos += 1;
                     }
                     break;
-                },
+                }
             }
         }
 
@@ -63,7 +61,7 @@ impl<'p> Parser<'p> {
         }
         Ok(ASTModule {
             path: self.path.clone(),
-            nodes: module.into_boxed_slice(),
+            nodes: module,
         })
     }
 
@@ -71,16 +69,22 @@ impl<'p> Parser<'p> {
         let mut node = self.parse_expr(0)?;
 
         let mut advance = false;
-        if let Some(Token { ty: TokenType::Semicolon, span, .. }) = self.tokens.get(self.pos) {
+        if let Some(Token {
+            ty: TokenType::Semicolon,
+            span,
+            ..
+        }) = self.tokens.get(self.pos)
+        {
             advance = true;
-            let span = node.span.start..span.end;
             node = ASTNode {
+                span: Span::from(node.span.start..span.end),
                 ty: ASTNodeType::Semi(Box::new(node)),
-                span: span.into(),
             };
         }
 
-        if advance { self.pos += 1 }
+        if advance {
+            self.pos += 1;
+        }
 
         Ok(node)
     }
@@ -88,18 +92,30 @@ impl<'p> Parser<'p> {
     fn parse_expr(&mut self, min_bp: u32) -> Result<ASTNode, Diagnostic> {
         let mut lhs = self.parse_primary()?;
 
-        while let Some(Token { ty: TokenType::Operator(op), .. }) = self.tokens.get(self.pos).cloned() {
-            if !op.is_infix() { break }
+        while let Some(Token {
+            ty: TokenType::Operator(op),
+            ..
+        }) = self.tokens.get(self.pos).cloned()
+        {
+            if !op.is_infix() {
+                break;
+            }
             let (lbp, rbp) = op.precedence();
-            if lbp < min_bp { break }
+            if lbp < min_bp {
+                break;
+            }
             self.pos += 1;
 
             let rhs = self.parse_expr(rbp)?;
 
-            let span = lhs.span.start..rhs.span.end;
             lhs = ASTNode {
-                ty: ASTNodeType::BinaryOp { op, lhs: Box::new(lhs), rhs: Box::new(rhs), op_tys: None },
-                span: span.into(),
+                span: Span::from(lhs.span.start..rhs.span.end),
+                ty: ASTNodeType::BinaryOp {
+                    op,
+                    lhs: Box::new(lhs),
+                    rhs: Box::new(rhs),
+                    op_tys: None,
+                },
             };
         }
 
@@ -107,13 +123,11 @@ impl<'p> Parser<'p> {
     }
 
     fn parse_primary(&mut self) -> Result<ASTNode, Diagnostic> {
-        let token = if let Some(token) = self.tokens.get(self.pos).cloned() {
-            token
-        } else {
+        let Some(token) = self.tokens.get(self.pos).cloned() else {
             return Err(Diagnostic::new(
                 self.path.display(),
                 "Expected expression, found end of input",
-                self.tokens.last().unwrap().span.clone()
+                self.tokens.last().unwrap().span,
             ));
         };
 
@@ -124,47 +138,53 @@ impl<'p> Parser<'p> {
                     ty: ASTNodeType::IntLit(v),
                     span: token.span,
                 })
-            },
+            }
             TokenType::FloatLit(v) => {
                 self.pos += 1;
                 Ok(ASTNode {
                     ty: ASTNodeType::FloatLit(v),
                     span: token.span,
                 })
-            },
+            }
             TokenType::StringLit => {
                 self.pos += 1;
                 Ok(ASTNode {
                     ty: ASTNodeType::StringLit(token.lex.to_string()),
                     span: token.span,
                 })
-            },
+            }
             TokenType::True => {
                 self.pos += 1;
                 Ok(ASTNode {
                     ty: ASTNodeType::Boolean(true),
                     span: token.span,
                 })
-            },
+            }
             TokenType::False => {
                 self.pos += 1;
                 Ok(ASTNode {
                     ty: ASTNodeType::Boolean(false),
                     span: token.span,
                 })
-            },
+            }
             TokenType::Identifier => {
                 self.pos += 1;
-                if let Some(Token { ty: TokenType::LParen, .. }) = self.tokens.get(self.pos) {
+                if let Some(Token {
+                    ty: TokenType::LParen,
+                    ..
+                }) = self.tokens.get(self.pos)
+                {
                     self.pos += 1;
                     let mut span = token.span;
                     let mut args = Vec::new();
                     while let Some(tok) = self.tokens.get(self.pos) {
-                        if tok.ty == TokenType::RParen { break }
+                        if tok.ty == TokenType::RParen {
+                            break;
+                        }
                         let node = self.parse_expr(0)?;
                         args.push(node);
                         if self.expect(TokenType::Comma).is_err() {
-                            break
+                            break;
                         }
                     }
                     let s = self.expect(TokenType::RParen)?;
@@ -175,7 +195,7 @@ impl<'p> Parser<'p> {
                             callee: token.lex.to_string(),
                             args,
                         },
-                        span
+                        span,
                     })
                 } else {
                     Ok(ASTNode {
@@ -183,28 +203,35 @@ impl<'p> Parser<'p> {
                         span: token.span,
                     })
                 }
-            },
+            }
             TokenType::Operator(op) if op.is_prefix() => {
                 self.pos += 1;
                 let operand = self.parse_primary()?;
-                let span = token.span.start..operand.span.end;
                 Ok(ASTNode {
-                    ty: ASTNodeType::UnaryOp { op, operand: Box::new(operand), op_ty: None },
-                    span: span.into(),
+                    span: Span::from(token.span.start..operand.span.end),
+                    ty: ASTNodeType::UnaryOp {
+                        op,
+                        operand: Box::new(operand),
+                        op_ty: None,
+                    },
                 })
-            },
+            }
             TokenType::LParen => {
                 self.pos += 1;
-                if let Some(Token { ty: TokenType::RParen, span, .. }) = self.tokens.get(self.pos) {
-                    let span = token.span.start..span.end;
+                if let Some(Token {
+                    ty: TokenType::RParen,
+                    span,
+                    ..
+                }) = self.tokens.get(self.pos)
+                {
                     Ok(ASTNode {
+                        span: Span::from(token.span.start..span.end),
                         ty: ASTNodeType::Unit,
-                        span: span.into(),
                     })
                 } else {
                     Ok(self.parse_expr(0)?)
                 }
-            },
+            }
             TokenType::LCurly => self.parse_block(),
             TokenType::Let => self.parse_let(),
             TokenType::If => self.parse_if(),
@@ -212,18 +239,20 @@ impl<'p> Parser<'p> {
             _ => Err(Diagnostic::new(
                 self.path.display(),
                 format!("Expected expression, found {}", token.err_str()),
-                token.span
+                token.span,
             )),
         }
     }
 
     fn parse_block(&mut self) -> Result<ASTNode, Diagnostic> {
-        let mut stmt_span = self.tokens.get(self.pos).unwrap().span.clone();
+        let mut stmt_span = self.tokens.get(self.pos).unwrap().span;
         self.pos += 1;
 
         let mut stmts = Vec::new();
         while let Some(token) = self.tokens.get(self.pos) {
-            if token.ty == TokenType::RCurly { break }
+            if token.ty == TokenType::RCurly {
+                break;
+            }
 
             let stmt = self.parse_stmt()?;
             stmts.push(stmt);
@@ -238,7 +267,7 @@ impl<'p> Parser<'p> {
     }
 
     fn parse_let(&mut self) -> Result<ASTNode, Diagnostic> {
-        let mut stmt_span = self.tokens.get(self.pos).unwrap().span.clone();
+        let mut stmt_span = self.tokens.get(self.pos).unwrap().span;
         self.pos += 1;
 
         let ident = self.expect(TokenType::Identifier)?;
@@ -248,7 +277,9 @@ impl<'p> Parser<'p> {
         if self.expect(TokenType::LParen).is_ok() {
             let mut params = Vec::new();
             while let Some(tok) = self.tokens.get(self.pos) {
-                if tok.ty == TokenType::RParen { break }
+                if tok.ty == TokenType::RParen {
+                    break;
+                }
                 let ident = self.expect(TokenType::Identifier)?;
                 let mut param_span = ident.span;
                 let name = ident.lex.to_string();
@@ -257,7 +288,7 @@ impl<'p> Parser<'p> {
                 param_span.end = ty.span.end;
                 params.push((name, ty, param_span));
                 if self.expect(TokenType::Comma).is_err() {
-                    break
+                    break;
                 }
             }
             self.expect(TokenType::RParen)?;
@@ -271,7 +302,12 @@ impl<'p> Parser<'p> {
             stmt_span.end = body.span.end;
 
             return Ok(ASTNode {
-                ty: ASTNodeType::FunDef { name, params, return_ty, body: Box::new(body) },
+                ty: ASTNodeType::FunDef {
+                    name,
+                    params,
+                    return_ty,
+                    body: Box::new(body),
+                },
                 span: stmt_span,
             });
         }
@@ -294,15 +330,16 @@ impl<'p> Parser<'p> {
 
         Ok(ASTNode {
             ty: ASTNodeType::LetDecl {
-                name, ty,
-                init: init.map(|expr| Box::new(expr))
+                name,
+                ty,
+                init: init.map(Box::new),
             },
             span: stmt_span,
         })
     }
 
     fn parse_if(&mut self) -> Result<ASTNode, Diagnostic> {
-        let mut stmt_span = self.tokens.get(self.pos).unwrap().span.clone();
+        let mut stmt_span = self.tokens.get(self.pos).unwrap().span;
         self.pos += 1;
 
         let condition = self.parse_expr(0)?;
@@ -323,14 +360,14 @@ impl<'p> Parser<'p> {
             ty: ASTNodeType::If {
                 condition: Box::new(condition),
                 then_body: Box::new(then_body),
-                else_body: else_body.map(|expr| Box::new(expr)),
+                else_body: else_body.map(Box::new),
             },
             span: stmt_span,
         })
     }
 
     fn parse_while(&mut self) -> Result<ASTNode, Diagnostic> {
-        let mut stmt_span = self.tokens.get(self.pos).unwrap().span.clone();
+        let mut stmt_span = self.tokens.get(self.pos).unwrap().span;
         self.pos += 1;
 
         let condition = self.parse_expr(0)?;
@@ -349,13 +386,11 @@ impl<'p> Parser<'p> {
     }
 
     fn parse_type(&mut self) -> Result<FrontendType, Diagnostic> {
-        let token = if let Some(token) = self.tokens.get(self.pos).cloned() {
-            token
-        } else {
+        let Some(token) = self.tokens.get(self.pos).cloned() else {
             return Err(Diagnostic::new(
                 self.path.display(),
                 "Expected type, found end of input",
-                self.tokens.last().unwrap().span.clone()
+                self.tokens.last().unwrap().span,
             ));
         };
 
@@ -366,16 +401,23 @@ impl<'p> Parser<'p> {
                     ty: FrontendTypeType::Identifier(token.lex.to_string()),
                     span: token.span,
                 })
-            },
+            }
             TokenType::LParen => {
                 self.pos += 1;
-                if let Some(Token { ty: TokenType::RParen, span, .. }) = self.tokens.get(self.pos) {
-                    let span = token.span.start..span.end;
-                    Ok(FrontendType { ty: FrontendTypeType::Unit, span: span.into() })
+                if let Some(Token {
+                    ty: TokenType::RParen,
+                    span,
+                    ..
+                }) = self.tokens.get(self.pos)
+                {
+                    Ok(FrontendType {
+                        ty: FrontendTypeType::Unit,
+                        span: Span::from(token.span.start..span.end),
+                    })
                 } else {
                     Ok(self.parse_type()?)
                 }
-            },
+            }
             TokenType::LSquare => {
                 self.pos += 1;
                 let inner_ty = self.parse_type()?;
@@ -384,70 +426,14 @@ impl<'p> Parser<'p> {
                     ty: FrontendTypeType::Vector(Box::new(inner_ty)),
                     span: token.span,
                 })
-            },
+            }
             _ => Err(Diagnostic::new(
                 self.path.display(),
                 format!("Expected type, found {}", token.err_str()),
-                self.tokens.last().unwrap().span.clone()
+                self.tokens.last().unwrap().span,
             )),
         }
     }
-
-    /*
-    fn parse_pattern(&mut self) -> Result<Pattern, Diagnostic> {
-        let token = if let Some(token) = self.tokens.get(self.pos).cloned() {
-            token
-        } else {
-            return Err(Diagnostic::new(
-                &self.path,
-                "Expected pattern, found end of input",
-                self.tokens.last().unwrap().span.clone()
-            ));
-        };
-
-        match token.ty {
-            TokenType::IntLit => {
-                self.pos += 1;
-                Ok(Pattern {
-                    ty: PatternType::Literal(PatternLiteral::Integer( unsafe { token.lit.unwrap().int_num } )),
-                    span: token.span,
-                })
-            },
-            TokenType::FloatLit => {
-                self.pos += 1;
-                Ok(Pattern {
-                    ty: PatternType::Literal(PatternLiteral::Float( unsafe { token.lit.unwrap().float_num } )),
-                    span: token.span,
-                })
-            },
-            TokenType::True => {
-                self.pos += 1;
-                Ok(Pattern {
-                    ty: PatternType::Literal(PatternLiteral::Boolean(true)),
-                    span: token.span,
-                })
-            },
-            TokenType::False => {
-                self.pos += 1;
-                Ok(Pattern {
-                    ty: PatternType::Literal(PatternLiteral::Boolean(false)),
-                    span: token.span,
-                })
-            },
-            TokenType::Identifier => {
-                self.pos += 1;
-                Ok(Pattern {
-                    ty: PatternType::Identifier(token.lex.to_string()),
-                    span: token.span,
-                })
-            },
-            _ => Err(Diagnostic::new(
-                &self.path,
-                format!("Expected pattern, found {}", token.err_str()),
-                self.tokens.last().unwrap().span.clone()
-            )),
-        }
-    }*/
 
     fn expect(&mut self, expected: TokenType) -> Result<Token<'p>, Diagnostic> {
         if let Some(token) = self.tokens.get(self.pos).cloned() {
@@ -458,14 +444,14 @@ impl<'p> Parser<'p> {
                 Err(Diagnostic::new(
                     self.path.display(),
                     format!("Expected {}, found {}", expected.err_str(), token.err_str()),
-                    token.span
+                    token.span,
                 ))
             }
         } else {
             Err(Diagnostic::new(
                 self.path.display(),
                 format!("Expected {}, found end of input", expected.err_str()),
-                self.tokens.last().unwrap().span.clone()
+                self.tokens.last().unwrap().span,
             ))
         }
     }

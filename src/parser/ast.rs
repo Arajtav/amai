@@ -1,12 +1,15 @@
 use std::path::PathBuf;
 
-use crate::{common::*, semantic_checker::types::Type};
 use super::ftypes::FrontendType;
+use crate::{
+    common::{Operator, Span},
+    semantic_checker::types::Type,
+};
 
 #[derive(Debug, Clone)]
 pub struct ASTModule {
     pub path: PathBuf,
-    pub nodes: Box<[ASTNode]>,
+    pub nodes: Vec<ASTNode>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
