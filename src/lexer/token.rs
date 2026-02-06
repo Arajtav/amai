@@ -59,7 +59,7 @@ impl TokenType {
             Self::With => "keyword `with`".to_owned(),
             Self::True => "boolean `true`".to_owned(),
             Self::False => "boolean `false`".to_owned(),
-            Self::Operator(op) => format!("`{}`", op.err_str()),
+            Self::Operator(op) => format!("`{op}`"),
             Self::LParen => "`(`".to_owned(),
             Self::RParen => "`)`".to_owned(),
             Self::LSquare => "`[`".to_owned(),

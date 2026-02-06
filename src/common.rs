@@ -1,3 +1,5 @@
+use std::fmt::Display;
+
 use crate::semantic_checker::types::Type;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -39,40 +41,6 @@ impl Operator {
 
     pub(crate) fn is_prefix(&self) -> bool {
         [Operator::Plus, Operator::Minus, Operator::Tilde, Operator::Bang].contains(self)
-    }
-
-    pub fn err_str(&self) -> &str {
-        match self {
-            Operator::Plus => "+",
-            Operator::Minus => "-",
-            Operator::Star => "*",
-            Operator::Slash => "/",
-            Operator::Modulo => "%",
-            Operator::Assign => "=",
-            Operator::PlusAssign => "+=",
-            Operator::MinusAssign => "-=",
-            Operator::StarAssign => "*=",
-            Operator::SlashAssign => "/=",
-            Operator::ModuloAssign => "%=",
-            Operator::Eq => "==",
-            Operator::Ne => "!=",
-            Operator::Gt => ">",
-            Operator::Lt => "<",
-            Operator::Ge => ">=",
-            Operator::Le => "<=",
-            Operator::Concat => "++",
-            Operator::Range => "..",
-            Operator::RangeInclus => "..=",
-            Operator::Tilde => "~",
-            Operator::LogOr => "||",
-            Operator::LogAnd => "&&",
-            Operator::Bang => "!",
-            Operator::Pipe => "|",
-            Operator::Ampersand => "&",
-            Operator::Caret => "^",
-            Operator::Lsh => "<<",
-            Operator::Rsh => ">>",
-        }
     }
 
     pub fn infix_output(&self, lhs: &Type, rhs: &Type) -> Option<Type> {
@@ -149,5 +117,41 @@ pub(crate) struct Span {
 impl From<std::ops::Range<usize>> for Span {
     fn from(value: std::ops::Range<usize>) -> Self {
         Self { start: value.start, end: value.end }
+    }
+}
+
+impl std::fmt::Display for Operator {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Plus => write!(f, "+"),
+            Self::Minus => write!(f, "-"),
+            Self::Star => write!(f, "*"),
+            Self::Slash => write!(f, "/"),
+            Self::Modulo => write!(f, "%"),
+            Self::Assign =>write!(f,  "="),
+            Self::PlusAssign => write!(f, "+="),
+            Self::MinusAssign => write!(f, "-="),
+            Self::StarAssign => write!(f, "*="),
+            Self::SlashAssign => write!(f, "/="),
+            Self::ModuloAssign => write!(f, "%="),
+            Self::Eq => write!(f, "=="),
+            Self::Ne => write!(f, "!="),
+            Self::Gt => write!(f, ">"),
+            Self::Lt => write!(f, "<"),
+            Self::Ge => write!(f, ">="),
+            Self::Le => write!(f, "<="),
+            Self::Concat => write!(f, "++"),
+            Self::Range => write!(f, ".."),
+            Self::RangeInclus => write!(f, "..="),
+            Self::Tilde => write!(f, "~"),
+            Self::LogOr => write!(f, "||"),
+            Self::LogAnd => write!(f, "&&"),
+            Self::Bang => write!(f, "!"),
+            Self::Pipe => write!(f, "|"),
+            Self::Ampersand => write!(f, "&"),
+            Self::Caret => write!(f, "^"),
+            Self::Lsh => write!(f, "<<"),
+            Self::Rsh => write!(f, ">>"),
+        }
     }
 }
