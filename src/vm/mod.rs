@@ -1,16 +1,16 @@
-pub mod value;
-pub mod inst;
-pub mod function;
-pub mod call_frame;
 pub mod arena;
+pub mod call_frame;
+pub mod function;
+pub mod inst;
+pub mod value;
 
+use crate::common::Span;
+use arena::Arena;
+use call_frame::CallFrame;
+use function::Function;
+use inst::*;
 use std::rc::Rc;
 use value::*;
-use inst::*;
-use function::Function;
-use call_frame::CallFrame;
-use arena::Arena;
-use crate::common::Span;
 
 pub struct AmaiVM {
     pub frames: Vec<CallFrame>,
@@ -41,15 +41,18 @@ impl AmaiVM {
         self.external_functions.len() as u32 - 1
     }
 
-    
     #[inline(always)]
     pub fn add_function(&mut self, bytecode: Box<[(u32, Span)]>, registers: &[Value]) -> usize {
         if !self.allow_large_bytecode {
-            assert!(bytecode.len() < 65536, "Bytecode length is out of jump bounds");
+            assert!(
+                bytecode.len() < 65536,
+                "Bytecode length is out of jump bounds"
+            );
         }
 
         let func = Function { bytecode };
-        self.functions.push((Rc::new(func), registers.try_into().unwrap()));
+        self.functions
+            .push((Rc::new(func), registers.try_into().unwrap()));
         self.functions.len() - 1
     }
 
@@ -75,8 +78,7 @@ impl AmaiVM {
     pub fn return_function(&mut self) {
         if let Some(mut callee_frame) = self.frames.pop() {
             if let Some(caller_frame) = self.frames.last_mut() {
-                caller_frame.registers[0] 
-                = callee_frame.callee_args.pop().unwrap_or(Value::nil());
+                caller_frame.registers[0] = callee_frame.callee_args.pop().unwrap_or(Value::nil());
             }
         }
     }
@@ -93,7 +95,10 @@ impl AmaiVM {
     #[inline(always)]
     #[allow(unsafe_op_in_unsafe_fn)]
     pub unsafe fn cycle(&mut self) -> Result<(), (String, Span)> {
-        if self.frames.is_empty() { self.running = false; return Ok(()) }
+        if self.frames.is_empty() {
+            self.running = false;
+            return Ok(());
+        }
         let frame = self.frames.last_mut().unwrap() as *mut CallFrame;
         let (inst, span) = if let Some(inst) = (&(*frame).function).bytecode.get((*frame).ip) {
             inst
@@ -104,177 +109,190 @@ impl AmaiVM {
         let mut next_ip = (*frame).ip + 1;
 
         let opcode = (inst & 0xFF) as u8;
+        let opcode = match Opcode::try_from(opcode) {
+            Ok(v) => v,
+            Err(_) => panic!("Unknown opcode: {opcode:#04X}"),
+        };
 
         match opcode {
-            NOP => {},
-            LOAD => {
+            Opcode::NOP => {}
+            Opcode::LOAD => {
                 let dest = ((inst >> 8) & 0xFF) as u8;
                 let id = ((inst >> 16) & 0xFFFF) as u16;
                 let constant = *self.constants.get_unchecked(id as usize);
 
                 (*frame).registers[dest as usize] = constant;
-            },
-            IADD => {
+            }
+            Opcode::IADD => {
                 let src1 = (*frame).registers[((inst >> 16) & 0xFF) as usize];
                 let src2 = (*frame).registers[((inst >> 24) & 0xFF) as usize];
 
-                (*frame).registers[((inst >> 8) & 0xFF) as usize] = src1.iadd(src2).map_err(|err| (err, *span))?;
-            },
-            ISUB => {
+                (*frame).registers[((inst >> 8) & 0xFF) as usize] =
+                    src1.iadd(src2).map_err(|err| (err, *span))?;
+            }
+            Opcode::ISUB => {
                 let src1 = (*frame).registers[((inst >> 16) & 0xFF) as usize];
                 let src2 = (*frame).registers[((inst >> 24) & 0xFF) as usize];
 
-                (*frame).registers[((inst >> 8) & 0xFF) as usize] = src1.isub(src2).map_err(|err| (err, *span))?;
-            },
-            IMUL => {
+                (*frame).registers[((inst >> 8) & 0xFF) as usize] =
+                    src1.isub(src2).map_err(|err| (err, *span))?;
+            }
+            Opcode::IMUL => {
                 let src1 = (*frame).registers[((inst >> 16) & 0xFF) as usize];
                 let src2 = (*frame).registers[((inst >> 24) & 0xFF) as usize];
 
-                (*frame).registers[((inst >> 8) & 0xFF) as usize] = src1.imul(src2).map_err(|err| (err, *span))?;
-            },
-            IDIV => {
+                (*frame).registers[((inst >> 8) & 0xFF) as usize] =
+                    src1.imul(src2).map_err(|err| (err, *span))?;
+            }
+            Opcode::IDIV => {
                 let src1 = (*frame).registers[((inst >> 16) & 0xFF) as usize];
                 let src2 = (*frame).registers[((inst >> 24) & 0xFF) as usize];
 
-                (*frame).registers[((inst >> 8) & 0xFF) as usize] = src1.idiv(src2).map_err(|err| (err, *span))?;
-            },
-            IREM => {
+                (*frame).registers[((inst >> 8) & 0xFF) as usize] =
+                    src1.idiv(src2).map_err(|err| (err, *span))?;
+            }
+            Opcode::IREM => {
                 let src1 = (*frame).registers[((inst >> 16) & 0xFF) as usize];
                 let src2 = (*frame).registers[((inst >> 24) & 0xFF) as usize];
 
-                (*frame).registers[((inst >> 8) & 0xFF) as usize] = src1.irem(src2).map_err(|err| (err, *span))?;
-            },
-            FADD => {
+                (*frame).registers[((inst >> 8) & 0xFF) as usize] =
+                    src1.irem(src2).map_err(|err| (err, *span))?;
+            }
+            Opcode::FADD => {
                 let src1 = (*frame).registers[((inst >> 16) & 0xFF) as usize];
                 let src2 = (*frame).registers[((inst >> 24) & 0xFF) as usize];
 
                 (*frame).registers[((inst >> 8) & 0xFF) as usize] = src1.fadd(src2);
-            },
-            FSUB => {
+            }
+            Opcode::FSUB => {
                 let src1 = (*frame).registers[((inst >> 16) & 0xFF) as usize];
                 let src2 = (*frame).registers[((inst >> 24) & 0xFF) as usize];
 
                 (*frame).registers[((inst >> 8) & 0xFF) as usize] = src1.fsub(src2);
-            },
-            FMUL => {
+            }
+            Opcode::FMUL => {
                 let src1 = (*frame).registers[((inst >> 16) & 0xFF) as usize];
                 let src2 = (*frame).registers[((inst >> 24) & 0xFF) as usize];
 
                 (*frame).registers[((inst >> 8) & 0xFF) as usize] = src1.fmul(src2);
-            },
-            FDIV => {
+            }
+            Opcode::FDIV => {
                 let src1 = (*frame).registers[((inst >> 16) & 0xFF) as usize];
                 let src2 = (*frame).registers[((inst >> 24) & 0xFF) as usize];
 
-                (*frame).registers[((inst >> 8) & 0xFF) as usize] = src1.fdiv(src2).ok_or(("Division by zero".to_string(), *span))?;
-            },
-            FREM => {
+                (*frame).registers[((inst >> 8) & 0xFF) as usize] = src1
+                    .fdiv(src2)
+                    .ok_or(("Division by zero".to_string(), *span))?;
+            }
+            Opcode::FREM => {
                 let src1 = (*frame).registers[((inst >> 16) & 0xFF) as usize];
                 let src2 = (*frame).registers[((inst >> 24) & 0xFF) as usize];
 
-                (*frame).registers[((inst >> 8) & 0xFF) as usize] = src1.frem(src2).ok_or(("Division by zero".to_string(), *span))?;
-            },
-            BOR => {
+                (*frame).registers[((inst >> 8) & 0xFF) as usize] = src1
+                    .frem(src2)
+                    .ok_or(("Division by zero".to_string(), *span))?;
+            }
+            Opcode::BOR => {
                 let src1 = (*frame).registers[((inst >> 16) & 0xFF) as usize];
                 let src2 = (*frame).registers[((inst >> 24) & 0xFF) as usize];
 
                 (*frame).registers[((inst >> 8) & 0xFF) as usize] = src1.bor(src2);
-            },
-            BAND => {
+            }
+            Opcode::BAND => {
                 let src1 = (*frame).registers[((inst >> 16) & 0xFF) as usize];
                 let src2 = (*frame).registers[((inst >> 24) & 0xFF) as usize];
 
                 (*frame).registers[((inst >> 8) & 0xFF) as usize] = src1.band(src2);
-            },
-            BXOR => {
+            }
+            Opcode::BXOR => {
                 let src1 = (*frame).registers[((inst >> 16) & 0xFF) as usize];
                 let src2 = (*frame).registers[((inst >> 24) & 0xFF) as usize];
 
                 (*frame).registers[((inst >> 8) & 0xFF) as usize] = src1.bxor(src2);
-            },
-            BNOT => {
+            }
+            Opcode::BNOT => {
                 let src = (*frame).registers[((inst >> 16) & 0xFF) as usize];
 
                 (*frame).registers[((inst >> 8) & 0xFF) as usize] = src.bnot();
-            },
-            LOR => {
+            }
+            Opcode::LOR => {
                 let src1 = (*frame).registers[((inst >> 16) & 0xFF) as usize];
                 let src2 = (*frame).registers[((inst >> 24) & 0xFF) as usize];
 
                 (*frame).registers[((inst >> 8) & 0xFF) as usize] = src1.lor(src2);
-            },
-            LAND => {
+            }
+            Opcode::LAND => {
                 let src1 = (*frame).registers[((inst >> 16) & 0xFF) as usize];
                 let src2 = (*frame).registers[((inst >> 24) & 0xFF) as usize];
 
                 (*frame).registers[((inst >> 8) & 0xFF) as usize] = src1.land(src2);
-            },
-            LNOT => {
+            }
+            Opcode::LNOT => {
                 let src = (*frame).registers[((inst >> 16) & 0xFF) as usize];
 
                 (*frame).registers[((inst >> 8) & 0xFF) as usize] = src.lnot();
-            },
-            CMEQ => {
+            }
+            Opcode::CMEQ => {
                 let src1 = (*frame).registers[((inst >> 16) & 0xFF) as usize];
                 let src2 = (*frame).registers[((inst >> 24) & 0xFF) as usize];
 
                 (*frame).registers[((inst >> 8) & 0xFF) as usize] = src1.cmeq(src2);
-            },
-            CMNE => {
+            }
+            Opcode::CMNE => {
                 let src1 = (*frame).registers[((inst >> 16) & 0xFF) as usize];
                 let src2 = (*frame).registers[((inst >> 24) & 0xFF) as usize];
 
                 (*frame).registers[((inst >> 8) & 0xFF) as usize] = src1.cmne(src2);
-            },
-            ICGT => {
+            }
+            Opcode::ICGT => {
                 let src1 = (*frame).registers[((inst >> 16) & 0xFF) as usize];
                 let src2 = (*frame).registers[((inst >> 24) & 0xFF) as usize];
 
                 (*frame).registers[((inst >> 8) & 0xFF) as usize] = src1.icgt(src2);
-            },
-            ICLT => {
+            }
+            Opcode::ICLT => {
                 let src1 = (*frame).registers[((inst >> 16) & 0xFF) as usize];
                 let src2 = (*frame).registers[((inst >> 24) & 0xFF) as usize];
 
                 (*frame).registers[((inst >> 8) & 0xFF) as usize] = src1.iclt(src2);
-            },
-            ICGE => {
+            }
+            Opcode::ICGE => {
                 let src1 = (*frame).registers[((inst >> 16) & 0xFF) as usize];
                 let src2 = (*frame).registers[((inst >> 24) & 0xFF) as usize];
 
                 (*frame).registers[((inst >> 8) & 0xFF) as usize] = src1.icge(src2);
-            },
-            ICLE => {
+            }
+            Opcode::ICLE => {
                 let src1 = (*frame).registers[((inst >> 16) & 0xFF) as usize];
                 let src2 = (*frame).registers[((inst >> 24) & 0xFF) as usize];
 
                 (*frame).registers[((inst >> 8) & 0xFF) as usize] = src1.icle(src2);
-            },
-            FCGT => {
+            }
+            Opcode::FCGT => {
                 let src1 = (*frame).registers[((inst >> 16) & 0xFF) as usize];
                 let src2 = (*frame).registers[((inst >> 24) & 0xFF) as usize];
 
                 (*frame).registers[((inst >> 8) & 0xFF) as usize] = src1.fcgt(src2);
-            },
-            FCLT => {
+            }
+            Opcode::FCLT => {
                 let src1 = (*frame).registers[((inst >> 16) & 0xFF) as usize];
                 let src2 = (*frame).registers[((inst >> 24) & 0xFF) as usize];
 
                 (*frame).registers[((inst >> 8) & 0xFF) as usize] = src1.fclt(src2);
-            },
-            FCGE => {
+            }
+            Opcode::FCGE => {
                 let src1 = (*frame).registers[((inst >> 16) & 0xFF) as usize];
                 let src2 = (*frame).registers[((inst >> 24) & 0xFF) as usize];
 
                 (*frame).registers[((inst >> 8) & 0xFF) as usize] = src1.fcge(src2);
-            },
-            FCLE => {
+            }
+            Opcode::FCLE => {
                 let src1 = (*frame).registers[((inst >> 16) & 0xFF) as usize];
                 let src2 = (*frame).registers[((inst >> 24) & 0xFF) as usize];
 
                 (*frame).registers[((inst >> 8) & 0xFF) as usize] = src1.fcle(src2);
-            },
-            JUMP => {
+            }
+            Opcode::JUMP => {
                 let addr = ((inst >> 8) & 0xFFFF) as i16;
 
                 if addr >= 0 {
@@ -282,8 +300,8 @@ impl AmaiVM {
                 } else {
                     next_ip = (*frame).ip - addr.abs() as usize;
                 }
-            },
-            JITR => {
+            }
+            Opcode::JITR => {
                 let addr = ((inst >> 8) & 0xFFFF) as i16;
                 let src = (*frame).registers[((inst >> 24) & 0xFF) as usize].to_bool();
 
@@ -294,8 +312,8 @@ impl AmaiVM {
                         next_ip = (*frame).ip - addr.abs() as usize;
                     }
                 }
-            },
-            JIFL => {
+            }
+            Opcode::JIFL => {
                 let addr = ((inst >> 8) & 0xFFFF) as i16;
                 let src = (*frame).registers[((inst >> 24) & 0xFF) as usize].to_bool();
 
@@ -306,79 +324,83 @@ impl AmaiVM {
                         next_ip = (*frame).ip - addr.abs() as usize;
                     }
                 }
-            },
-            CALL => {
+            }
+            Opcode::CALL => {
                 let id = (inst >> 8) & 0xFF;
                 self.call_function(
                     (*frame).registers[id as usize].to_ptr(),
                     (*frame).callee_args.clone().into_boxed_slice(),
                 );
                 (*frame).callee_args.clear();
-            },
-            RETN => self.return_function(),
-            INEG => {
+            }
+            Opcode::RETN => self.return_function(),
+            Opcode::INEG => {
                 let src = (*frame).registers[((inst >> 16) & 0xFF) as usize];
 
                 (*frame).registers[((inst >> 8) & 0xFF) as usize] = src.ineg();
-            },
-            FNEG => {
+            }
+            Opcode::FNEG => {
                 let src = (*frame).registers[((inst >> 16) & 0xFF) as usize];
 
                 (*frame).registers[((inst >> 8) & 0xFF) as usize] = src.fneg();
-            },
-            MOVE => {
+            }
+            Opcode::MOVE => {
                 let src = (*frame).registers[((inst >> 16) & 0xFF) as usize];
 
                 (*frame).registers[((inst >> 8) & 0xFF) as usize] = src;
-            },
-            PARG => {
+            }
+            Opcode::PARG => {
                 let src = (*frame).registers[((inst >> 8) & 0xFF) as usize];
 
                 (*frame).callee_args.push(src);
-            },
-            CARG => {
+            }
+            Opcode::CARG => {
                 let arg_id = ((inst >> 16) & 0xFFFF) as usize;
 
                 (*frame).registers[((inst >> 8) & 0xFF) as usize] = (*frame).caller_args[arg_id];
-            },
-            CEXT => {
+            }
+            Opcode::CEXT => {
                 let id = (inst >> 8) & 0xFFFFFF;
 
                 self.call_external(id as usize, &(*frame).callee_args);
                 (*frame).callee_args.clear();
-            },
-            LSHF => {
+            }
+            Opcode::LSHF => {
                 let src1 = (*frame).registers[((inst >> 16) & 0xFF) as usize];
                 let src2 = (*frame).registers[((inst >> 24) & 0xFF) as usize];
 
-                (*frame).registers[((inst >> 8) & 0xFF) as usize] = src1.lshf(src2).map_err(|err| (err, *span))?;
-            },
-            RSHF => {
+                (*frame).registers[((inst >> 8) & 0xFF) as usize] =
+                    src1.lshf(src2).map_err(|err| (err, *span))?;
+            }
+            Opcode::RSHF => {
                 let src1 = (*frame).registers[((inst >> 16) & 0xFF) as usize];
                 let src2 = (*frame).registers[((inst >> 24) & 0xFF) as usize];
 
-                (*frame).registers[((inst >> 8) & 0xFF) as usize] = src1.rshf(src2).map_err(|err| (err, *span))?;
-            },
-            SCON => {
+                (*frame).registers[((inst >> 8) & 0xFF) as usize] =
+                    src1.rshf(src2).map_err(|err| (err, *span))?;
+            }
+            Opcode::SCON => {
                 let src1 = (*frame).registers[((inst >> 16) & 0xFF) as usize];
                 let src2 = (*frame).registers[((inst >> 24) & 0xFF) as usize];
 
-                (*frame).registers[((inst >> 8) & 0xFF) as usize] = src1.scon(src2, &mut self.arena);
-            },
-            SCEQ => {
+                (*frame).registers[((inst >> 8) & 0xFF) as usize] =
+                    src1.scon(src2, &mut self.arena);
+            }
+            Opcode::SCEQ => {
                 let src1 = (*frame).registers[((inst >> 16) & 0xFF) as usize];
                 let src2 = (*frame).registers[((inst >> 24) & 0xFF) as usize];
 
-                (*frame).registers[((inst >> 8) & 0xFF) as usize] = src1.sceq(src2, &mut self.arena);
-            },
-            SCNE => {
+                (*frame).registers[((inst >> 8) & 0xFF) as usize] =
+                    src1.sceq(src2, &mut self.arena);
+            }
+            Opcode::SCNE => {
                 let src1 = (*frame).registers[((inst >> 16) & 0xFF) as usize];
                 let src2 = (*frame).registers[((inst >> 24) & 0xFF) as usize];
 
-                (*frame).registers[((inst >> 8) & 0xFF) as usize] = src1.scne(src2, &mut self.arena);
-            },
-            HALT => self.running = false,
-            _ => panic!("Unknown opcode: {opcode:#04X}"),
+                (*frame).registers[((inst >> 8) & 0xFF) as usize] =
+                    src1.scne(src2, &mut self.arena);
+            }
+            Opcode::HALT => self.running = false,
         }
 
         (*frame).ip = next_ip;

@@ -1,259 +1,109 @@
-use crate::vm::inst::*;
+use crate::vm::inst::Opcode;
+use std::fmt::Write as _;
 
 pub fn disassemble(bytecode: &[u32]) -> String {
     let mut output = String::new();
     for inst in bytecode {
-        let opcode = (inst & 0xFF) as u8;
-        match opcode {
-            NOP => output.push_str("NOP\n"),
-            LOAD => {
-                let dest = ((inst >> 8) & 0xFF) as u8;
-                let const_id = ((inst >> 16) & 0xFFFF) as u16;
-                output.push_str(&format!("LOAD r{dest} #{const_id}\n"));
-            },
-            IADD => {
-                let dest = ((inst >> 8) & 0xFF) as u8;
-                let src1 = ((inst >> 16) & 0xFF) as u8;
-                let src2 = ((inst >> 24) & 0xFF) as u8;
-                output.push_str(&format!("IADD r{dest} r{src1} r{src2}\n"));
-            },
-            ISUB => {
-                let dest = ((inst >> 8) & 0xFF) as u8;
-                let src1 = ((inst >> 16) & 0xFF) as u8;
-                let src2 = ((inst >> 24) & 0xFF) as u8;
-                output.push_str(&format!("ISUB r{dest} r{src1} r{src2}\n"));
-            },
-            IMUL => {
-                let dest = ((inst >> 8) & 0xFF) as u8;
-                let src1 = ((inst >> 16) & 0xFF) as u8;
-                let src2 = ((inst >> 24) & 0xFF) as u8;
-                output.push_str(&format!("IMUL r{dest} r{src1} r{src2}\n"));
-            },
-            IDIV => {
-                let dest = ((inst >> 8) & 0xFF) as u8;
-                let src1 = ((inst >> 16) & 0xFF) as u8;
-                let src2 = ((inst >> 24) & 0xFF) as u8;
-                output.push_str(&format!("IDIV r{dest} r{src1} r{src2}\n"));
-            },
-            IREM => {
-                let dest = ((inst >> 8) & 0xFF) as u8;
-                let src1 = ((inst >> 16) & 0xFF) as u8;
-                let src2 = ((inst >> 24) & 0xFF) as u8;
-                output.push_str(&format!("IREM r{dest} r{src1} r{src2}\n"));
-            },
-            FADD => {
-                let dest = ((inst >> 8) & 0xFF) as u8;
-                let src1 = ((inst >> 16) & 0xFF) as u8;
-                let src2 = ((inst >> 24) & 0xFF) as u8;
-                output.push_str(&format!("FADD r{dest} r{src1} r{src2}\n"));
-            },
-            FSUB => {
-                let dest = ((inst >> 8) & 0xFF) as u8;
-                let src1 = ((inst >> 16) & 0xFF) as u8;
-                let src2 = ((inst >> 24) & 0xFF) as u8;
-                output.push_str(&format!("FSUB r{dest} r{src1} r{src2}\n"));
-            },
-            FMUL => {
-                let dest = ((inst >> 8) & 0xFF) as u8;
-                let src1 = ((inst >> 16) & 0xFF) as u8;
-                let src2 = ((inst >> 24) & 0xFF) as u8;
-                output.push_str(&format!("FMUL r{dest} r{src1} r{src2}\n"));
-            },
-            FDIV => {
-                let dest = ((inst >> 8) & 0xFF) as u8;
-                let src1 = ((inst >> 16) & 0xFF) as u8;
-                let src2 = ((inst >> 24) & 0xFF) as u8;
-                output.push_str(&format!("FDIV r{dest} r{src1} r{src2}\n"));
-            },
-            FREM => {
-                let dest = ((inst >> 8) & 0xFF) as u8;
-                let src1 = ((inst >> 16) & 0xFF) as u8;
-                let src2 = ((inst >> 24) & 0xFF) as u8;
-                output.push_str(&format!("FREM r{dest} r{src1} r{src2}\n"));
-            },
-            BOR => {
-                let dest = ((inst >> 8) & 0xFF) as u8;
-                let src1 = ((inst >> 16) & 0xFF) as u8;
-                let src2 = ((inst >> 24) & 0xFF) as u8;
-                output.push_str(&format!("BOR r{dest} r{src1} r{src2}\n"));
-            },
-            BAND => {
-                let dest = ((inst >> 8) & 0xFF) as u8;
-                let src1 = ((inst >> 16) & 0xFF) as u8;
-                let src2 = ((inst >> 24) & 0xFF) as u8;
-                output.push_str(&format!("BAND r{dest} r{src1} r{src2}\n"));
-            },
-            BNOT => {
-                let dest = ((inst >> 8) & 0xFF) as u8;
-                let src1 = ((inst >> 16) & 0xFF) as u8;
-                output.push_str(&format!("BNOT r{dest} r{src1}\n"));
-            },
-            BXOR => {
-                let dest = ((inst >> 8) & 0xFF) as u8;
-                let src1 = ((inst >> 16) & 0xFF) as u8;
-                let src2 = ((inst >> 24) & 0xFF) as u8;
-                output.push_str(&format!("BXOR r{dest} r{src1} r{src2}\n"));
-            },
-            LOR => {
-                let dest = ((inst >> 8) & 0xFF) as u8;
-                let src1 = ((inst >> 16) & 0xFF) as u8;
-                let src2 = ((inst >> 24) & 0xFF) as u8;
-                output.push_str(&format!("LOR r{dest} r{src1} r{src2}\n"));
-            },
-            LAND => {
-                let dest = ((inst >> 8) & 0xFF) as u8;
-                let src1 = ((inst >> 16) & 0xFF) as u8;
-                let src2 = ((inst >> 24) & 0xFF) as u8;
-                output.push_str(&format!("LAND r{dest} r{src1} r{src2}\n"));
-            },
-            LNOT => {
-                let dest = ((inst >> 8) & 0xFF) as u8;
-                let src1 = ((inst >> 16) & 0xFF) as u8;
-                output.push_str(&format!("LNOT r{dest} r{src1}\n"));
-            },
-            CMEQ => {
-                let dest = ((inst >> 8) & 0xFF) as u8;
-                let src1 = ((inst >> 16) & 0xFF) as u8;
-                let src2 = ((inst >> 24) & 0xFF) as u8;
-                output.push_str(&format!("CMEQ r{dest} r{src1} r{src2}\n"));
-            },
-            CMNE => {
-                let dest = ((inst >> 8) & 0xFF) as u8;
-                let src1 = ((inst >> 16) & 0xFF) as u8;
-                let src2 = ((inst >> 24) & 0xFF) as u8;
-                output.push_str(&format!("CMNE r{dest} r{src1} r{src2}\n"));
-            },
-            ICGT => {
-                let dest = ((inst >> 8) & 0xFF) as u8;
-                let src1 = ((inst >> 16) & 0xFF) as u8;
-                let src2 = ((inst >> 24) & 0xFF) as u8;
-                output.push_str(&format!("ICGT r{dest} r{src1} r{src2}\n"));
-            },
-            ICLT => {
-                let dest = ((inst >> 8) & 0xFF) as u8;
-                let src1 = ((inst >> 16) & 0xFF) as u8;
-                let src2 = ((inst >> 24) & 0xFF) as u8;
-                output.push_str(&format!("ICLT r{dest} r{src1} r{src2}\n"));
-            },
-            ICGE => {
-                let dest = ((inst >> 8) & 0xFF) as u8;
-                let src1 = ((inst >> 16) & 0xFF) as u8;
-                let src2 = ((inst >> 24) & 0xFF) as u8;
-                output.push_str(&format!("ICGE r{dest} r{src1} r{src2}\n"));
-            },
-            ICLE => {
-                let dest = ((inst >> 8) & 0xFF) as u8;
-                let src1 = ((inst >> 16) & 0xFF) as u8;
-                let src2 = ((inst >> 24) & 0xFF) as u8;
-                output.push_str(&format!("ICLE r{dest} r{src1} r{src2}\n"));
-            },
-            FCGT => {
-                let dest = ((inst >> 8) & 0xFF) as u8;
-                let src1 = ((inst >> 16) & 0xFF) as u8;
-                let src2 = ((inst >> 24) & 0xFF) as u8;
-                output.push_str(&format!("FCGT r{dest} r{src1} r{src2}\n"));
-            },
-            FCLT => {
-                let dest = ((inst >> 8) & 0xFF) as u8;
-                let src1 = ((inst >> 16) & 0xFF) as u8;
-                let src2 = ((inst >> 24) & 0xFF) as u8;
-                output.push_str(&format!("FCLT r{dest} r{src1} r{src2}\n"));
-            },
-            FCGE => {
-                let dest = ((inst >> 8) & 0xFF) as u8;
-                let src1 = ((inst >> 16) & 0xFF) as u8;
-                let src2 = ((inst >> 24) & 0xFF) as u8;
-                output.push_str(&format!("FCGE r{dest} r{src1} r{src2}\n"));
-            },
-            FCLE => {
-                let dest = ((inst >> 8) & 0xFF) as u8;
-                let src1 = ((inst >> 16) & 0xFF) as u8;
-                let src2 = ((inst >> 24) & 0xFF) as u8;
-                output.push_str(&format!("FCLE r{dest} r{src1} r{src2}\n"));
-            },
-            JUMP => {
-                let a = ((inst >> 8) & 0xFFFF) as i16;
-                let dest = if a >= 0 { format!("+{}", a) } else { a.to_string() };
-                output.push_str(&format!("JUMP {dest}\n"));
-            },
-            JITR => {
-                let a = ((inst >> 8) & 0xFFFF) as i16;
-                let dest = if a >= 0 { format!("+{}", a) } else { a.to_string() };
-                let src1 = ((inst >> 24) & 0xFF) as u8;
-                output.push_str(&format!("JITR {dest} r{src1}\n"));
-            },
-            JIFL => {
-                let a = ((inst >> 8) & 0xFFFF) as i16;
-                let dest = if a >= 0 { format!("+{}", a) } else { a.to_string() };
-                let src1 = ((inst >> 24) & 0xFF) as u8;
-                output.push_str(&format!("JIFL {dest} r{src1}\n"));
-            },
-            CALL => {
-                let dest = (inst >> 8) & 0xFF;
-                output.push_str(&format!("CALL r{dest}\n"));
-            },
-            RETN => output.push_str("RETN"),
-            INEG => {
-                let dest = ((inst >> 8) & 0xFF) as u8;
-                let src1 = ((inst >> 16) & 0xFF) as u8;
-                output.push_str(&format!("INEG r{dest} r{src1}\n"));
-            },
-            FNEG => {
-                let dest = ((inst >> 8) & 0xFF) as u8;
-                let src1 = ((inst >> 16) & 0xFF) as u8;
-                output.push_str(&format!("FNEG r{dest} r{src1}\n"));
-            },
-            MOVE => {
-                let dest = ((inst >> 8) & 0xFF) as u8;
-                let src1 = ((inst >> 16) & 0xFF) as u8;
-                output.push_str(&format!("MOVE r{dest} r{src1}\n"));
-            },
-            PARG => {
-                let src = ((inst >> 8) & 0xFF) as u8;
-                output.push_str(&format!("PARG r{src}\n"));
-            },
-            CARG => {
-                let dest = ((inst >> 8) & 0xFF) as u8;
-                let index = ((inst >> 16) & 0xFFFF) as u16;
-                output.push_str(&format!("CARG r{dest} #{index}\n"));
-            },
-            CEXT => {
-                let func = (inst >> 8) & 0xFFFFFF;
-                output.push_str(&format!("CEXT ${func}\n"));
-            },
-            LSHF => {
-                let dest = ((inst >> 8) & 0xFF) as u8;
-                let src1 = ((inst >> 16) & 0xFF) as u8;
-                let src2 = ((inst >> 24) & 0xFF) as u8;
-                output.push_str(&format!("LSHF r{dest} r{src1} r{src2}\n"));
-            },
-            RSHF => {
-                let dest = ((inst >> 8) & 0xFF) as u8;
-                let src1 = ((inst >> 16) & 0xFF) as u8;
-                let src2 = ((inst >> 24) & 0xFF) as u8;
-                output.push_str(&format!("RSHF r{dest} r{src1} r{src2}\n"));
-            },
-            SCON => {
-                let dest = ((inst >> 8) & 0xFF) as u8;
-                let src1 = ((inst >> 16) & 0xFF) as u8;
-                let src2 = ((inst >> 24) & 0xFF) as u8;
-                output.push_str(&format!("SCON r{dest} r{src1} r{src2}\n"));
-            },
-            SCEQ => {
-                let dest = ((inst >> 8) & 0xFF) as u8;
-                let src1 = ((inst >> 16) & 0xFF) as u8;
-                let src2 = ((inst >> 24) & 0xFF) as u8;
-                output.push_str(&format!("SCEQ r{dest} r{src1} r{src2}\n"));
-            },
-            SCNE => {
-                let dest = ((inst >> 8) & 0xFF) as u8;
-                let src1 = ((inst >> 16) & 0xFF) as u8;
-                let src2 = ((inst >> 24) & 0xFF) as u8;
-                output.push_str(&format!("SCNE r{dest} r{src1} r{src2}\n"));
-            },
-            HALT => output.push_str("HALT\n"),
-            _ => todo!()
+        macro_rules! get_arg {
+            ($ty:ty, $pos:expr) => {{
+                const LEN: usize = std::mem::size_of::<$ty>() * 8;
+                const MASK: u32 = if LEN == 32 { u32::MAX } else { (1u32 << LEN) - 1 };
+                ((inst >> $pos) & MASK) as $ty
+            }};
         }
+
+        let Ok(opcode) = Opcode::try_from(get_arg!(u8, 0)) else {
+            todo!()
+        };
+
+        output.push_str(opcode.as_ref());
+
+        macro_rules! write_out {
+            ($($arg:tt)*) => {
+                let _ = write!(output, $($arg)*);
+            };
+        }
+
+        match opcode {
+            Opcode::LOAD | Opcode::CARG => {
+                let dest = get_arg!(u8, 8);
+                let const_id = get_arg!(u16, 16);
+                write_out!(" r{dest} #{const_id}");
+            }
+            Opcode::IADD
+            | Opcode::ISUB
+            | Opcode::IMUL
+            | Opcode::IDIV
+            | Opcode::IREM
+            | Opcode::FADD
+            | Opcode::FSUB
+            | Opcode::FMUL
+            | Opcode::FDIV
+            | Opcode::FREM
+            | Opcode::BOR
+            | Opcode::BAND
+            | Opcode::BXOR
+            | Opcode::LOR
+            | Opcode::LAND
+            | Opcode::CMEQ
+            | Opcode::CMNE
+            | Opcode::ICGT
+            | Opcode::ICLT
+            | Opcode::ICGE
+            | Opcode::ICLE
+            | Opcode::FCGT
+            | Opcode::FCLT
+            | Opcode::FCGE
+            | Opcode::FCLE
+            | Opcode::LSHF
+            | Opcode::RSHF
+            | Opcode::SCON
+            | Opcode::SCEQ
+            | Opcode::SCNE => {
+                let dest = get_arg!(u8, 8);
+                let src1 = get_arg!(u8, 16);
+                let src2 = get_arg!(u8, 24);
+                write_out!(" r{dest} r{src1} r{src2}");
+            }
+            Opcode::BNOT | Opcode::LNOT | Opcode::INEG | Opcode::FNEG | Opcode::MOVE => {
+                let dest = get_arg!(u8, 8);
+                let src1 = get_arg!(u8, 16);
+                write_out!(" r{dest} r{src1}");
+            }
+            Opcode::JUMP => {
+                let a = get_arg!(i16, 8);
+                let dest = if a >= 0 {
+                    format!("+{a}")
+                } else {
+                    a.to_string()
+                };
+                write_out!(" {dest}");
+            }
+            Opcode::JITR | Opcode::JIFL => {
+                let a = get_arg!(i16, 8);
+                let dest = if a >= 0 {
+                    format!("+{a}")
+                } else {
+                    a.to_string()
+                };
+                let src1 = get_arg!(u8, 24);
+                write_out!(" {dest} r{src1}");
+            }
+            Opcode::CALL => {
+                let dest = get_arg!(u8, 8);
+                write_out!(" r{dest}");
+            }
+            Opcode::PARG => {
+                let src = get_arg!(u8, 8);
+                write_out!(" r{src}");
+            }
+            Opcode::CEXT => {
+                let func = get_arg!(u32, 8);
+                write_out!(" ${func}");
+            }
+            Opcode::NOP | Opcode::HALT | Opcode::RETN => {}
+        }
+        output.push('\n');
     }
 
     output
