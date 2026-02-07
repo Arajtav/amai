@@ -59,7 +59,7 @@ impl AmaiVM {
                 self.arena.write(addr, &value.data());
                 new_vals.push(Value::from_ptr(addr));
             } else {
-                new_vals.push(value.to_value())
+                new_vals.push(value.to_value());
             }
         }
         new_vals

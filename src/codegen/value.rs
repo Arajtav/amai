@@ -2,15 +2,19 @@ use crate::vm::value::Value;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum ValueBuilder {
-    Int(i64), Float(f64), Bool(bool), Unit, String(Vec<u8>), Function(usize),
+    Int(i64),
+    Float(f64),
+    Bool(bool),
+    Unit,
+    String(Vec<u8>),
+    Function(usize),
 }
 
 impl ValueBuilder {
     pub fn is_large(&self) -> bool {
         match self {
-            Self::Int(_) | Self::Float(_)
-            | Self::Bool(_) | Self::Unit | Self::Function(_) => false,
-            _ => true,
+            Self::Int(_) | Self::Float(_) | Self::Bool(_) | Self::Unit | Self::Function(_) => false,
+            Self::String(_) => true,
         }
     }
 
@@ -25,18 +29,22 @@ impl ValueBuilder {
     pub fn align(&self) -> usize {
         match self {
             Self::Int(_) | Self::Float(_) | Self::Function(_) => 8,
-            Self::Bool(_) | Self::Unit | Self::String(_) => 1,
+            Self::String(_) => 4,
+            Self::Bool(_) | Self::Unit => 1,
         }
     }
 
     pub fn data(&self) -> Vec<u8> {
         match self {
-            Self::Int(_) | Self::Float(_) | Self::Bool(_) | Self::Unit | Self::Function(_) => vec![],
+            Self::Int(_) | Self::Float(_) | Self::Bool(_) | Self::Unit | Self::Function(_) => {
+                vec![]
+            }
             Self::String(chars) => {
-                let mut t = (chars.len() as u32).to_le_bytes().to_vec();
+                let mut t = Vec::with_capacity(4 + chars.len());
+                t.extend(u32::try_from(chars.len()).unwrap().to_le_bytes());
                 t.extend(chars);
                 t
-            },
+            }
         }
     }
 
@@ -45,7 +53,6 @@ impl ValueBuilder {
             Self::Int(n) => Value::from_int(*n),
             Self::Float(n) => Value::from_float(*n),
             Self::Bool(n) => Value::from_bool(*n),
-            Self::Unit => Value::nil(),
             Self::Function(n) => Value::from_ptr(*n),
             _ => Value::nil(),
         }

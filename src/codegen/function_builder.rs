@@ -1,6 +1,6 @@
-use std::collections::HashMap;
-use crate::common::Span;
 use super::value::ValueBuilder;
+use crate::common::Span;
+use std::collections::HashMap;
 
 #[derive(Debug, Clone)]
 pub struct FunctionBuilder {
@@ -25,24 +25,21 @@ impl FunctionBuilder {
     }
 
     pub fn get_var(&self, n: &str) -> u8 {
-        let s = self.scope
+        let s = self
+            .scope
             .iter()
             .rev()
-            .find(
-                |(s, _, sc)|
-                s.contains_key(&format!("{n}_{sc}"))
-            ).expect(&format!("tried to find variable {n}"));
+            .find(|(s, _, sc)| s.contains_key(&format!("{n}_{sc}")))
+            .unwrap_or_else(|| panic!("tried to find variable {n}"));
         s.0[&format!("{n}_{}", s.2)]
     }
 
     pub fn get_var_safe(&self, n: &str) -> Option<u8> {
-        let s = self.scope
+        let s = self
+            .scope
             .iter()
             .rev()
-            .find(
-                |(s, _, sc)|
-                s.contains_key(&format!("{n}_{sc}"))
-            )?;
+            .find(|(s, _, sc)| s.contains_key(&format!("{n}_{sc}")))?;
         s.0.get(&format!("{n}_{}", s.2)).copied()
     }
 }

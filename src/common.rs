@@ -166,6 +166,12 @@ pub(crate) struct Span {
     pub(crate) end: usize,
 }
 
+impl Span {
+    pub fn empty() -> Self {
+        Self { start: 0, end: 0 }
+    }
+}
+
 impl From<std::ops::Range<usize>> for Span {
     fn from(value: std::ops::Range<usize>) -> Self {
         Self {

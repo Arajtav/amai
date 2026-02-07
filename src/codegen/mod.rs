@@ -9,6 +9,37 @@ pub mod value;
 use function_builder::FunctionBuilder;
 use value::ValueBuilder;
 
+macro_rules! set_arg {
+    ($inst:ident, $ty:ty, $pos:expr, $val:expr) => {{
+        const LEN: usize = std::mem::size_of::<$ty>() * 8;
+        const MASK: u32 = if LEN == 32 {
+            u32::MAX
+        } else {
+            (1u32 << LEN) - 1
+        };
+        $inst &= !(MASK << $pos);
+        $inst |= (u32::from($val) & MASK) << $pos;
+        $inst
+    }};
+}
+
+macro_rules! encode {
+    ($variant:ident) => {{
+        Opcode::$variant as u32
+    }};
+    ($variant:ident, [$($ty:ty : $val:expr),+ $(,)?]) => {{
+        let mut inst = Opcode::$variant as u32;
+        let mut shift = 8;
+
+        $(
+            inst = set_arg!(inst, $ty, shift, $val);
+            shift += std::mem::size_of::<$ty>() * 8;
+        )+
+
+        inst
+    }};
+}
+
 pub struct ASTCompiler {
     functions: Vec<FunctionBuilder>,
     pub constants: Vec<ValueBuilder>,
@@ -25,12 +56,19 @@ impl ASTCompiler {
     }
 
     fn add_constant(&mut self, c: ValueBuilder) -> u16 {
-        if !self.constants.contains(&c) {
-            self.constants.push(c.clone());
-        }
-        self.constants.iter().position(|s| *s == c).unwrap() as u16
+        u16::try_from(
+            self.constants
+                .iter()
+                .position(|s| s == &c)
+                .unwrap_or_else(|| {
+                    self.constants.push(c);
+                    self.constants.len() - 1
+                }),
+        )
+        .unwrap()
     }
 
+    // TODO: Panics if main is not defined.
     pub fn compile(&mut self, ast: &ASTModule) -> (usize, Vec<FunctionBuilder>) {
         for node in &ast.nodes {
             self.collect_functions_sig(node);
@@ -43,47 +81,43 @@ impl ASTCompiler {
     }
 
     fn collect_functions_body(&mut self, node: &ASTNode) {
-        match &node.ty {
-            ASTNodeType::FunDef {
-                name, params, body, ..
-            } => {
-                let scope = self
-                    .functions
-                    .last_mut()
-                    .map(|func| func.current_scope_id)
-                    .unwrap_or(0);
-                self.current_function = self.get_func(&format!("@{name}_{scope}"));
-                self.functions
-                    .iter_mut()
-                    .find(|f| f.name == format!("@{name}_{scope}"))
-                    .unwrap()
-                    .scope
-                    .last_mut()
-                    .unwrap()
-                    .0
-                    .insert(format!("@{name}_{scope}"), 3);
-                let mut output_buf = Vec::new();
-                for (i, (name, _, _)) in params.iter().enumerate() {
-                    let func = self.functions.get_mut(self.current_function).unwrap();
-                    let (scope, next_available, sc_id) = func.scope.last_mut().unwrap();
-                    let reg = *next_available;
-                    scope.insert(format!("{name}_{sc_id}"), reg);
-                    *next_available += 1;
-                    output_buf.push((
-                        Opcode::CArg as u32 | ((reg as u32) << 8) | ((i as u32) << 16),
-                        Span { start: 0, end: 0 },
-                    )); // CARG does not create runtime errors (that im aware of)
-                }
-                self.compile_node(body, &mut output_buf, 0);
-                output_buf.push((Opcode::PArg as u32, Span { start: 0, end: 0 })); // Opcode::PArg does not create runtime errors (that im aware of)
-                output_buf.push((Opcode::Retn as u32, Span { start: 0, end: 0 }));
-                self.functions
-                    .iter_mut()
-                    .find(|f| f.name == format!("@{name}_{scope}"))
-                    .unwrap()
-                    .body = output_buf;
+        if let ASTNodeType::FunDef {
+            name, params, body, ..
+        } = &node.ty
+        {
+            let scope = self
+                .functions
+                .last_mut()
+                .map_or(0, |func| func.current_scope_id);
+            self.current_function = self.get_func(&format!("@{name}_{scope}"));
+            self.functions
+                .iter_mut()
+                .find(|f| f.name == format!("@{name}_{scope}"))
+                .unwrap()
+                .scope
+                .last_mut()
+                .unwrap()
+                .0
+                .insert(format!("@{name}_{scope}"), 3);
+            let mut output_buf = Vec::new();
+            for (i, (name, _, _)) in params.iter().enumerate() {
+                let func = self.functions.get_mut(self.current_function).unwrap();
+                let (scope, next_available, sc_id) = func.scope.last_mut().unwrap();
+                let reg = *next_available;
+                scope.insert(format!("{name}_{sc_id}"), reg);
+                *next_available += 1;
+
+                let i = u16::try_from(i).expect("Function has too many params");
+                output_buf.push((encode!(CArg, [u8:reg, u16:i]), Span::empty()));
             }
-            _ => {}
+            self.compile_node(body, &mut output_buf, 0);
+            output_buf.push((encode!(PArg), Span::empty()));
+            output_buf.push((encode!(Retn), Span::empty()));
+            self.functions
+                .iter_mut()
+                .find(|f| f.name == format!("@{name}_{scope}"))
+                .unwrap()
+                .body = output_buf;
         }
     }
 
@@ -102,8 +136,7 @@ impl ASTCompiler {
                 let scope = self
                     .functions
                     .last_mut()
-                    .map(|func| func.current_scope_id)
-                    .unwrap_or(0);
+                    .map_or(0, |func| func.current_scope_id);
                 self.functions
                     .push(FunctionBuilder::new(&format!("@{name}_{scope}"), registers));
                 self.functions
@@ -124,68 +157,80 @@ impl ASTCompiler {
         self.collect_functions_body(node);
         match &node.ty {
             ASTNodeType::IntLit(n) => {
-                let const_id = self.add_constant(ValueBuilder::Int(*n));
                 output_buf.push((
-                    Opcode::Load as u32 | ((dest as u32) << 8) | ((const_id as u32) << 16),
+                    encode!(Load, [
+                        u8:dest,
+                        u16:self.add_constant(ValueBuilder::Int(*n))
+                    ]),
                     node.span,
                 ));
             }
             ASTNodeType::FloatLit(n) => {
-                let const_id = self.add_constant(ValueBuilder::Float(*n));
                 output_buf.push((
-                    Opcode::Load as u32 | ((dest as u32) << 8) | ((const_id as u32) << 16),
+                    encode!(Load, [
+                        u8:dest,
+                        u16:self.add_constant(ValueBuilder::Float(*n))
+                    ]),
                     node.span,
                 ));
             }
             ASTNodeType::StringLit(n) => {
-                let chars = n.as_bytes();
-                let const_id = self.add_constant(ValueBuilder::String(chars.to_vec()));
                 output_buf.push((
-                    Opcode::Load as u32 | ((dest as u32) << 8) | ((const_id as u32) << 16),
+                    encode!(Load, [
+                        u8:dest,
+                        u16:self.add_constant(ValueBuilder::String(n.as_bytes().to_owned()))
+                    ]),
                     node.span,
                 ));
             }
             ASTNodeType::Boolean(n) => {
-                let const_id = self.add_constant(ValueBuilder::Bool(*n));
                 output_buf.push((
-                    Opcode::Load as u32 | ((dest as u32) << 8) | ((const_id as u32) << 16),
+                    encode!(Load, [
+                        u8:dest,
+                        u16:self.add_constant(ValueBuilder::Bool(*n))
+                    ]),
                     node.span,
                 ));
             }
-            ASTNodeType::Identifier(n) => {
-                let func = self.functions.get_mut(self.current_function).unwrap();
-                output_buf.push((
-                    Opcode::Move as u32 | ((dest as u32) << 8) | ((func.get_var(n) as u32) << 16),
-                    node.span,
-                ))
-            }
+            ASTNodeType::Identifier(n) => output_buf.push((
+                encode!(Move, [
+                    u8:dest,
+                    u8:self
+                        .functions
+                        .get_mut(self.current_function)
+                        .unwrap()
+                        .get_var(n),
+                ]),
+                node.span,
+            )),
             ASTNodeType::Semi(stmt) => self.compile_node(stmt, output_buf, 0),
             ASTNodeType::Unit => {
-                let const_id = self.add_constant(ValueBuilder::Unit);
                 output_buf.push((
-                    Opcode::Load as u32 | ((dest as u32) << 8) | ((const_id as u32) << 16),
+                    encode!(Load, [
+                        u8:dest,
+                        u16:self.add_constant(ValueBuilder::Unit)
+                    ]),
                     node.span,
                 ));
             }
             ASTNodeType::Block(stmts) => {
-                if stmts.len() == 0 {
-                    let const_id = self.add_constant(ValueBuilder::Unit);
+                if stmts.is_empty() {
                     output_buf.push((
-                        Opcode::Load as u32 | ((dest as u32) << 8) | ((const_id as u32) << 16),
+                        encode!(Load, [
+                            u8:dest,
+                            u16:self.add_constant(ValueBuilder::Unit)
+                        ]),
                         node.span,
                     ));
                     return;
                 }
 
-                let previous_scope_id: usize;
-                {
-                    let func = self.functions.get_mut(self.current_function).unwrap();
-                    previous_scope_id = func.current_scope_id;
-                    let new_scope_id = *func.taken_scope_ids.iter().max().unwrap() + 1;
-                    func.current_scope_id = new_scope_id;
-                    func.taken_scope_ids.push(new_scope_id);
-                    func.scope.push((HashMap::new(), 3, func.current_scope_id));
-                }
+                let func = self.functions.get_mut(self.current_function).unwrap();
+                let previous_scope_id = func.current_scope_id;
+                let new_scope_id = *func.taken_scope_ids.iter().max().unwrap() + 1;
+                func.current_scope_id = new_scope_id;
+                func.taken_scope_ids.push(new_scope_id);
+                func.scope.push((HashMap::new(), 3, func.current_scope_id));
 
                 if stmts.len() == 1 {
                     self.compile_node(&stmts[0], output_buf, dest);
@@ -206,169 +251,180 @@ impl ASTCompiler {
                 rhs,
                 op_tys,
             } => {
-                if *op == Operator::Assign {
-                    if let ASTNodeType::Identifier(s) = &lhs.ty {
-                        let func = self.functions.get_mut(self.current_function).unwrap();
-                        let reg = func.get_var(s);
-                        self.compile_node(rhs, output_buf, 0);
-                        output_buf.push((Opcode::Move as u32 | ((reg as u32) << 8), node.span));
+                if let ASTNodeType::Identifier(s) = &lhs.ty {
+                    let func = self.functions.get_mut(self.current_function).unwrap();
+                    let reg = func.get_var(s);
 
-                        let const_id = self.add_constant(ValueBuilder::Unit);
-                        output_buf.push((
-                            Opcode::Load as u32 | ((dest as u32) << 8) | ((const_id as u32) << 16),
-                            node.span,
-                        ));
-                        return;
-                    }
-                } else if *op == Operator::PlusAssign {
-                    if let ASTNodeType::Identifier(s) = &lhs.ty {
-                        let func = self.functions.get_mut(self.current_function).unwrap();
-                        let reg = func.get_var(s);
-                        self.compile_node(rhs, output_buf, 1);
-                        match op_tys.as_ref().unwrap().0 {
-                            Type::Int => output_buf.push((
-                                Opcode::IAdd as u32
-                                    | ((reg as u32) << 8)
-                                    | ((reg as u32) << 16)
-                                    | 0x1000000,
+                    match *op {
+                        Operator::Assign => {
+                            self.compile_node(rhs, output_buf, 0);
+                            output_buf.push((encode!(Move, [u8:reg]), node.span));
+                            output_buf.push((
+                                encode!(Load, [
+                                    u8:dest,
+                                    u16:self.add_constant(ValueBuilder::Unit)
+                                ]),
                                 node.span,
-                            )),
-                            Type::Float => output_buf.push((
-                                Opcode::FAdd as u32
-                                    | ((reg as u32) << 8)
-                                    | ((reg as u32) << 16)
-                                    | 0x1000000,
-                                node.span,
-                            )),
-                            _ => unreachable!(),
+                            ));
+                            return;
                         }
+                        Operator::PlusAssign => {
+                            self.compile_node(rhs, output_buf, 1);
+                            match op_tys.as_ref().unwrap().0 {
+                                Type::Int => output_buf.push((
+                                    encode!(IAdd, [
+                                        u8:reg,
+                                        u8:reg,
+                                        u8:1u32
+                                    ]),
+                                    node.span,
+                                )),
+                                Type::Float => output_buf.push((
+                                    encode!(FAdd, [
+                                        u8:reg,
+                                        u8:reg,
+                                        u8:1u32
+                                    ]),
+                                    node.span,
+                                )),
+                                _ => unreachable!(),
+                            }
 
-                        let const_id = self.add_constant(ValueBuilder::Unit);
-                        output_buf.push((
-                            Opcode::Load as u32 | ((dest as u32) << 8) | ((const_id as u32) << 16),
-                            node.span,
-                        ));
-                        return;
-                    }
-                } else if *op == Operator::MinusAssign {
-                    if let ASTNodeType::Identifier(s) = &lhs.ty {
-                        let func = self.functions.get_mut(self.current_function).unwrap();
-                        let reg = func.get_var(s);
-                        self.compile_node(rhs, output_buf, 1);
-                        match op_tys.as_ref().unwrap().0 {
-                            Type::Int => output_buf.push((
-                                Opcode::ISub as u32
-                                    | ((reg as u32) << 8)
-                                    | ((reg as u32) << 16)
-                                    | 0x1000000,
+                            output_buf.push((
+                                encode!(Load, [
+                                    u8:dest,
+                                    u16:self.add_constant(ValueBuilder::Unit)
+                                ]),
                                 node.span,
-                            )),
-                            Type::Float => output_buf.push((
-                                Opcode::FSub as u32
-                                    | ((reg as u32) << 8)
-                                    | ((reg as u32) << 16)
-                                    | 0x1000000,
-                                node.span,
-                            )),
-                            _ => unreachable!(),
+                            ));
+
+                            return;
                         }
+                        Operator::MinusAssign => {
+                            self.compile_node(rhs, output_buf, 1);
+                            match op_tys.as_ref().unwrap().0 {
+                                Type::Int => output_buf.push((
+                                    encode!(ISub, [
+                                        u8:reg,
+                                        u8:reg,
+                                        u8:1u32
+                                    ]),
+                                    node.span,
+                                )),
+                                Type::Float => output_buf.push((
+                                    encode!(FSub, [
+                                        u8:reg,
+                                        u8:reg,
+                                        u8:1u32
+                                    ]),
+                                    node.span,
+                                )),
+                                _ => unreachable!(),
+                            }
 
-                        let const_id = self.add_constant(ValueBuilder::Unit);
-                        output_buf.push((
-                            Opcode::Load as u32 | ((dest as u32) << 8) | ((const_id as u32) << 16),
-                            node.span,
-                        ));
-                        return;
-                    }
-                } else if *op == Operator::StarAssign {
-                    if let ASTNodeType::Identifier(s) = &lhs.ty {
-                        let func = self.functions.get_mut(self.current_function).unwrap();
-                        let reg = func.get_var(s);
-                        self.compile_node(rhs, output_buf, 1);
-                        match op_tys.as_ref().unwrap().0 {
-                            Type::Int => output_buf.push((
-                                Opcode::IMul as u32
-                                    | ((reg as u32) << 8)
-                                    | ((reg as u32) << 16)
-                                    | 0x1000000,
+                            output_buf.push((
+                                encode!(Load, [
+                                    u8:dest,
+                                    u16:self.add_constant(ValueBuilder::Unit)
+                                ]),
                                 node.span,
-                            )),
-                            Type::Float => output_buf.push((
-                                Opcode::FMul as u32
-                                    | ((reg as u32) << 8)
-                                    | ((reg as u32) << 16)
-                                    | 0x1000000,
-                                node.span,
-                            )),
-                            _ => unreachable!(),
+                            ));
+                            return;
                         }
+                        Operator::StarAssign => {
+                            self.compile_node(rhs, output_buf, 1);
+                            match op_tys.as_ref().unwrap().0 {
+                                Type::Int => output_buf.push((
+                                    encode!(IMul, [
+                                        u8:reg,
+                                        u8:reg,
+                                        u8:1u32
+                                    ]),
+                                    node.span,
+                                )),
+                                Type::Float => output_buf.push((
+                                    encode!(FMul, [
+                                        u8:reg,
+                                        u8:reg,
+                                        u8:1u32
+                                    ]),
+                                    node.span,
+                                )),
+                                _ => unreachable!(),
+                            }
 
-                        let const_id = self.add_constant(ValueBuilder::Unit);
-                        output_buf.push((
-                            Opcode::Load as u32 | ((dest as u32) << 8) | ((const_id as u32) << 16),
-                            node.span,
-                        ));
-                        return;
-                    }
-                } else if *op == Operator::SlashAssign {
-                    if let ASTNodeType::Identifier(s) = &lhs.ty {
-                        let func = self.functions.get_mut(self.current_function).unwrap();
-                        let reg = func.get_var(s);
-                        self.compile_node(rhs, output_buf, 1);
-                        match op_tys.as_ref().unwrap().0 {
-                            Type::Int => output_buf.push((
-                                Opcode::IDiv as u32
-                                    | ((reg as u32) << 8)
-                                    | ((reg as u32) << 16)
-                                    | 0x1000000,
+                            output_buf.push((
+                                encode!(Load, [
+                                    u8:dest,
+                                    u16:self.add_constant(ValueBuilder::Unit)
+                                ]),
                                 node.span,
-                            )),
-                            Type::Float => output_buf.push((
-                                Opcode::FDiv as u32
-                                    | ((reg as u32) << 8)
-                                    | ((reg as u32) << 16)
-                                    | 0x1000000,
-                                node.span,
-                            )),
-                            _ => unreachable!(),
+                            ));
+                            return;
                         }
+                        Operator::SlashAssign => {
+                            self.compile_node(rhs, output_buf, 1);
+                            match op_tys.as_ref().unwrap().0 {
+                                Type::Int => output_buf.push((
+                                    encode!(IDiv, [
+                                        u8:reg,
+                                        u8:reg,
+                                        u8:1u32
+                                    ]),
+                                    node.span,
+                                )),
+                                Type::Float => output_buf.push((
+                                    encode!(FDiv, [
+                                        u8:reg,
+                                        u8:reg,
+                                        u8:1u32
+                                    ]),
+                                    node.span,
+                                )),
+                                _ => unreachable!(),
+                            }
 
-                        let const_id = self.add_constant(ValueBuilder::Unit);
-                        output_buf.push((
-                            Opcode::Load as u32 | ((dest as u32) << 8) | ((const_id as u32) << 16),
-                            node.span,
-                        ));
-                        return;
-                    }
-                } else if *op == Operator::ModuloAssign {
-                    if let ASTNodeType::Identifier(s) = &lhs.ty {
-                        let func = self.functions.get_mut(self.current_function).unwrap();
-                        let reg = func.get_var(s);
-                        self.compile_node(rhs, output_buf, 1);
-                        match op_tys.as_ref().unwrap().0 {
-                            Type::Int => output_buf.push((
-                                Opcode::IRem as u32
-                                    | ((reg as u32) << 8)
-                                    | ((reg as u32) << 16)
-                                    | 0x1000000,
+                            output_buf.push((
+                                encode!(Load, [
+                                    u8:dest,
+                                    u16:self.add_constant(ValueBuilder::Unit)
+                                ]),
                                 node.span,
-                            )),
-                            Type::Float => output_buf.push((
-                                Opcode::FRem as u32
-                                    | ((reg as u32) << 8)
-                                    | ((reg as u32) << 16)
-                                    | 0x1000000,
-                                node.span,
-                            )),
-                            _ => unreachable!(),
+                            ));
+                            return;
                         }
+                        Operator::ModuloAssign => {
+                            self.compile_node(rhs, output_buf, 1);
+                            match op_tys.as_ref().unwrap().0 {
+                                Type::Int => output_buf.push((
+                                    encode!(IRem, [
+                                        u8:reg,
+                                        u8:reg,
+                                        u8:1u32
+                                    ]),
+                                    node.span,
+                                )),
+                                Type::Float => output_buf.push((
+                                    encode!(FRem, [
+                                        u8:reg,
+                                        u8:reg,
+                                        u8:1u32,
+                                    ]),
+                                    node.span,
+                                )),
+                                _ => unreachable!(),
+                            }
 
-                        let const_id = self.add_constant(ValueBuilder::Unit);
-                        output_buf.push((
-                            Opcode::Load as u32 | ((dest as u32) << 8) | ((const_id as u32) << 16),
-                            node.span,
-                        ));
-                        return;
+                            output_buf.push((
+                                encode!(Load, [
+                                    u8:dest,
+                                    u16:self.add_constant(ValueBuilder::Unit),
+                                ]),
+                                node.span,
+                            ));
+                            return;
+                        }
+                        _ => {}
                     }
                 }
 
@@ -378,153 +434,273 @@ impl ASTCompiler {
                 match op {
                     Operator::Plus => match op_tys.as_ref().unwrap().0 {
                         Type::Int => output_buf.push((
-                            Opcode::IAdd as u32 | ((dest as u32) << 8) | 0x10000 | 0x2000000,
+                            encode!(IAdd, [
+                                u8:dest,
+                                u8:1u32,
+                                u8:2u32,
+                            ]),
                             node.span,
                         )),
                         Type::Float => output_buf.push((
-                            Opcode::FAdd as u32 | ((dest as u32) << 8) | 0x10000 | 0x2000000,
+                            encode!(FAdd, [
+                                u8:dest,
+                                u8:1u32,
+                                u8:2u32,
+                            ]),
                             node.span,
                         )),
                         _ => unreachable!(),
                     },
                     Operator::Minus => match op_tys.as_ref().unwrap().0 {
                         Type::Int => output_buf.push((
-                            Opcode::ISub as u32 | ((dest as u32) << 8) | 0x10000 | 0x2000000,
+                            encode!(ISub, [
+                                u8:dest,
+                                u8:1u32,
+                                u8:2u32,
+                            ]),
                             node.span,
                         )),
                         Type::Float => output_buf.push((
-                            Opcode::FSub as u32 | ((dest as u32) << 8) | 0x10000 | 0x2000000,
+                            encode!(FSub, [
+                                u8:dest,
+                                u8:1u32,
+                                u8:2u32,
+                            ]),
                             node.span,
                         )),
                         _ => unreachable!(),
                     },
                     Operator::Star => match op_tys.as_ref().unwrap().0 {
                         Type::Int => output_buf.push((
-                            Opcode::IMul as u32 | ((dest as u32) << 8) | 0x10000 | 0x2000000,
+                            encode!(IMul, [
+                                u8:dest,
+                                u8:1u32,
+                                u8:2u32,
+                            ]),
                             node.span,
                         )),
                         Type::Float => output_buf.push((
-                            Opcode::FMul as u32 | ((dest as u32) << 8) | 0x10000 | 0x2000000,
+                            encode!(FMul, [
+                                u8:dest,
+                                u8:1u32,
+                                u8:2u32,
+                            ]),
                             node.span,
                         )),
                         _ => unreachable!(),
                     },
                     Operator::Slash => match op_tys.as_ref().unwrap().0 {
                         Type::Int => output_buf.push((
-                            Opcode::IDiv as u32 | ((dest as u32) << 8) | 0x10000 | 0x2000000,
+                            encode!(IDiv, [
+                                u8:dest,
+                                u8:1u32,
+                                u8:2u32,
+                            ]),
                             node.span,
                         )),
                         Type::Float => output_buf.push((
-                            Opcode::FDiv as u32 | ((dest as u32) << 8) | 0x10000 | 0x2000000,
+                            encode!(FDiv, [
+                                u8:dest,
+                                u8:1u32,
+                                u8:2u32,
+                            ]),
                             node.span,
                         )),
                         _ => unreachable!(),
                     },
                     Operator::Modulo => match op_tys.as_ref().unwrap().0 {
                         Type::Int => output_buf.push((
-                            Opcode::IRem as u32 | ((dest as u32) << 8) | 0x10000 | 0x2000000,
+                            encode!(IRem, [
+                                u8:dest,
+                                u8:1u32,
+                                u8:2u32,
+                            ]),
                             node.span,
                         )),
                         Type::Float => output_buf.push((
-                            Opcode::FRem as u32 | ((dest as u32) << 8) | 0x10000 | 0x2000000,
+                            encode!(FRem, [
+                                u8:dest,
+                                u8:1u32,
+                                u8:2u32,
+                            ]),
                             node.span,
                         )),
                         _ => unreachable!(),
                     },
                     Operator::Eq => match op_tys.as_ref().unwrap().0 {
                         Type::String => output_buf.push((
-                            Opcode::SCEq as u32 | ((dest as u32) << 8) | 0x10000 | 0x2000000,
+                            encode!(SCEq, [
+                                u8:dest,
+                                u8:1u32,
+                                u8:2u32,
+                            ]),
                             node.span,
                         )),
                         _ => output_buf.push((
-                            Opcode::CMEq as u32 | ((dest as u32) << 8) | 0x10000 | 0x2000000,
+                            encode!(CMEq, [
+                                u8:dest,
+                                u8:1u32,
+                                u8:2u32,
+                            ]),
                             node.span,
                         )),
                     },
                     Operator::Ne => match op_tys.as_ref().unwrap().0 {
                         Type::String => output_buf.push((
-                            Opcode::SCNE as u32 | ((dest as u32) << 8) | 0x10000 | 0x2000000,
+                            encode!(SCNE, [
+                                u8:dest,
+                                u8:1u32,
+                                u8:2u32,
+                            ]),
                             node.span,
                         )),
                         _ => output_buf.push((
-                            Opcode::CMNE as u32 | ((dest as u32) << 8) | 0x10000 | 0x2000000,
+                            encode!(CMNE, [
+                                u8:dest,
+                                u8:1u32,
+                                u8:2u32,
+                            ]),
                             node.span,
                         )),
                     },
                     Operator::Gt => match op_tys.as_ref().unwrap().0 {
                         Type::Int => output_buf.push((
-                            Opcode::ICGT as u32 | ((dest as u32) << 8) | 0x10000 | 0x2000000,
+                            encode!(ICGT, [
+                                u8:dest,
+                                u8:1u32,
+                                u8:2u32,
+                            ]),
                             node.span,
                         )),
                         Type::Float => output_buf.push((
-                            Opcode::FCGT as u32 | ((dest as u32) << 8) | 0x10000 | 0x2000000,
+                            encode!(FCGT, [
+                                u8:dest,
+                                u8:1u32,
+                                u8:2u32,
+                            ]),
                             node.span,
                         )),
                         _ => unreachable!(),
                     },
                     Operator::Lt => match op_tys.as_ref().unwrap().0 {
                         Type::Int => output_buf.push((
-                            Opcode::ICLT as u32 | ((dest as u32) << 8) | 0x10000 | 0x2000000,
+                            encode!(ICLT, [
+                                u8:dest,
+                                u8:1u32,
+                                u8:2u32,
+                            ]),
                             node.span,
                         )),
                         Type::Float => output_buf.push((
-                            Opcode::FCLT as u32 | ((dest as u32) << 8) | 0x10000 | 0x2000000,
+                            encode!(FCLT, [
+                                u8:dest,
+                                u8:1u32,
+                                u8:2u32,
+                            ]),
                             node.span,
                         )),
                         _ => unreachable!(),
                     },
                     Operator::Ge => match op_tys.as_ref().unwrap().0 {
                         Type::Int => output_buf.push((
-                            Opcode::ICGE as u32 | ((dest as u32) << 8) | 0x10000 | 0x2000000,
+                            encode!(ICGE, [
+                                u8:dest,
+                                u8:1u32,
+                                u8:2u32,
+                            ]),
                             node.span,
                         )),
                         Type::Float => output_buf.push((
-                            Opcode::FCGE as u32 | ((dest as u32) << 8) | 0x10000 | 0x2000000,
+                            encode!(FCGE, [
+                                u8:dest,
+                                u8:1u32,
+                                u8:2u32,
+                            ]),
                             node.span,
                         )),
                         _ => unreachable!(),
                     },
                     Operator::Le => match op_tys.as_ref().unwrap().0 {
                         Type::Int => output_buf.push((
-                            Opcode::ICLE as u32 | ((dest as u32) << 8) | 0x10000 | 0x2000000,
+                            encode!(ICLE, [
+                                u8:dest,
+                                u8:1u32,
+                                u8:2u32,
+                            ]),
                             node.span,
                         )),
                         Type::Float => output_buf.push((
-                            Opcode::FCLE as u32 | ((dest as u32) << 8) | 0x10000 | 0x2000000,
+                            encode!(FCLE, [
+                                u8:dest,
+                                u8:1u32,
+                                u8:2u32,
+                            ]),
                             node.span,
                         )),
                         _ => unreachable!(),
                     },
                     Operator::Concat => output_buf.push((
-                        Opcode::SCon as u32 | ((dest as u32) << 8) | 0x10000 | 0x2000000,
+                        encode!(SCon, [
+                            u8:dest,
+                            u8:1u32,
+                            u8:2u32,
+                        ]),
                         node.span,
                     )),
                     Operator::LogOr => output_buf.push((
-                        Opcode::LOr as u32 | ((dest as u32) << 8) | 0x10000 | 0x2000000,
+                        encode!(LOr, [
+                            u8:dest,
+                            u8:1u32,
+                            u8:2u32,
+                        ]),
                         node.span,
                     )),
                     Operator::LogAnd => output_buf.push((
-                        Opcode::LAnd as u32 | ((dest as u32) << 8) | 0x10000 | 0x2000000,
+                        encode!(LAnd, [
+                            u8:dest,
+                            u8:1u32,
+                            u8:2u32,
+                        ]),
                         node.span,
                     )),
                     Operator::Pipe => output_buf.push((
-                        Opcode::BOr as u32 | ((dest as u32) << 8) | 0x10000 | 0x2000000,
+                        encode!(BOr, [
+                            u8:dest,
+                            u8:1u32,
+                            u8:2u32,
+                        ]),
                         node.span,
                     )),
                     Operator::Ampersand => output_buf.push((
-                        Opcode::BAnd as u32 | ((dest as u32) << 8) | 0x10000 | 0x2000000,
+                        encode!(BAnd, [
+                            u8:dest,
+                            u8:1u32,
+                            u8:2u32,
+                        ]),
                         node.span,
                     )),
                     Operator::Caret => output_buf.push((
-                        Opcode::BXor as u32 | ((dest as u32) << 8) | 0x10000 | 0x2000000,
+                        encode!(BXor, [
+                            u8:dest,
+                            u8:1u32,
+                            u8:2u32,
+                        ]),
                         node.span,
                     )),
                     Operator::Lsh => output_buf.push((
-                        Opcode::LShf as u32 | ((dest as u32) << 8) | 0x10000 | 0x2000000,
+                        encode!(LShf, [
+                            u8:dest,
+                            u8:1u32,
+                            u8:2u32,
+                        ]),
                         node.span,
                     )),
                     Operator::Rsh => output_buf.push((
-                        Opcode::RShf as u32 | ((dest as u32) << 8) | 0x10000 | 0x2000000,
+                        encode!(RShf, [
+                            u8:dest,
+                            u8:1u32,
+                            u8:2u32,
+                        ]),
                         node.span,
                     )),
                     _ => todo!("binary op: {op:?}"),
@@ -535,26 +711,47 @@ impl ASTCompiler {
 
                 match *op {
                     Operator::Plus => output_buf.push((
-                        Opcode::Move as u32 | ((dest as u32) << 8) | 0x10000,
+                        encode!(Move, [
+                            u8:dest,
+                            u8:1u32,
+                        ]),
                         node.span,
                     )),
                     Operator::Minus => match op_ty.as_ref().unwrap() {
-                        Type::Int => output_buf
-                            .push((Opcode::INeg as u32 | ((dest as u32) << 8) | 0x10000, node.span)),
-                        Type::Float => output_buf
-                            .push((Opcode::FNeg as u32 | ((dest as u32) << 8) | 0x10000, node.span)),
+                        Type::Int => output_buf.push((
+                            encode!(INeg, [
+                                u8:dest,
+                                u8:1u32
+                            ]),
+                            node.span,
+                        )),
+                        Type::Float => output_buf.push((
+                            encode!(FNeg, [
+                                u8:dest,
+                                u8:1u32
+                            ]),
+                            node.span,
+                        )),
                         _ => unreachable!(),
                     },
-                    Operator::Tilde => {
-                        output_buf.push((Opcode::BNot as u32 | ((dest as u32) << 8) | 0x10000, node.span))
-                    }
-                    Operator::Bang => {
-                        output_buf.push((Opcode::LNot as u32 | ((dest as u32) << 8) | 0x10000, node.span))
-                    }
+                    Operator::Tilde => output_buf.push((
+                        encode!(BNot, [
+                            u8:dest,
+                            u8:1u32
+                        ]),
+                        node.span,
+                    )),
+                    Operator::Bang => output_buf.push((
+                        encode!(LNot, [
+                            u8:dest,
+                            u8:1u32
+                        ]),
+                        node.span,
+                    )),
                     _ => unreachable!(),
                 }
             }
-            ASTNodeType::LetDecl { name, ty: _, init } => {
+            ASTNodeType::LetDecl { name, ty, init } => {
                 let func = self.functions.get_mut(self.current_function).unwrap();
                 let (scope, next_available, sc_id) = func.scope.last_mut().unwrap();
                 let reg = *next_available;
@@ -562,12 +759,19 @@ impl ASTCompiler {
                 *next_available += 1;
                 if let Some(i) = init {
                     self.compile_node(i, output_buf, 0);
-                    output_buf.push((Opcode::Move as u32 | ((reg as u32) << 8), node.span))
+                    output_buf.push((
+                        encode!(Move, [
+                            u8:reg,
+                        ]),
+                        node.span,
+                    ));
                 }
 
-                let const_id = self.add_constant(ValueBuilder::Unit);
                 output_buf.push((
-                    Opcode::Load as u32 | ((dest as u32) << 8) | ((const_id as u32) << 16),
+                    encode!(Load, [
+                        u8:dest,
+                        u16:self.add_constant(ValueBuilder::Unit)
+                    ]),
                     node.span,
                 ));
             }
@@ -578,15 +782,13 @@ impl ASTCompiler {
             } => {
                 self.compile_node(condition, output_buf, 0);
 
-                let previous_scope_id: usize;
-                {
-                    let func = self.functions.get_mut(self.current_function).unwrap();
+                let func = self.functions.get_mut(self.current_function).unwrap();
 
-                    previous_scope_id = func.current_scope_id;
-                    let new_scope_id = *func.taken_scope_ids.iter().max().unwrap() + 1;
-                    func.current_scope_id = new_scope_id;
-                    func.taken_scope_ids.push(new_scope_id);
-                }
+                let previous_scope_id = func.current_scope_id;
+                let new_scope_id = *func.taken_scope_ids.iter().max().unwrap() + 1;
+                func.current_scope_id = new_scope_id;
+                func.taken_scope_ids.push(new_scope_id);
+
                 let mut compiled_then = Vec::new();
                 self.compile_node(then_body, &mut compiled_then, dest);
 
@@ -595,9 +797,10 @@ impl ASTCompiler {
                     let func = self.functions.get_mut(self.current_function).unwrap();
                     func.current_scope_id = previous_scope_id;
 
-                    let then_len = compiled_then.len();
                     output_buf.push((
-                        Opcode::JIFl as u32 | ((then_len as u32 + 1) << 8),
+                        encode!(JIFl, [
+                            u32:u32::try_from(compiled_then.len()).unwrap() + 1
+                        ]),
                         node.span,
                     ));
                     output_buf.extend(compiled_then);
@@ -636,15 +839,23 @@ impl ASTCompiler {
                 let mut compiled_condition = Vec::new();
                 self.compile_node(condition, &mut compiled_condition, 0);
                 output_buf.extend(&compiled_condition);
-                let jump_to_end = compiled_body.len() as i16 + 2;
-                output_buf.push((Opcode::JIFl as u32 | ((jump_to_end as u32) << 8), node.span));
+                let cbl = i16::try_from(compiled_body.len()).unwrap();
+                let jump_to_end = cbl.strict_add(2);
+                output_buf.push((
+                    encode!(JIFl, [
+                        u32:u32::from(jump_to_end.cast_unsigned())
+                    ]),
+                    node.span,
+                ));
 
                 output_buf.extend(&compiled_body);
 
-                let jump_to_cond_eval =
-                    -(compiled_body.len() as i16 + compiled_condition.len() as i16 + 1);
+                let ccl = i16::try_from(compiled_condition.len()).unwrap();
+                let jump_to_cond_eval = -cbl.strict_add(ccl).strict_add(1);
                 output_buf.push((
-                    Opcode::Jump as u32 | ((jump_to_cond_eval as u32) << 8),
+                    encode!(Jump, [
+                        u32:u32::from(jump_to_cond_eval.cast_unsigned())
+                    ]),
                     node.span,
                 ));
             }
@@ -652,20 +863,41 @@ impl ASTCompiler {
             ASTNodeType::FunCall { callee, args } => {
                 for arg in args {
                     self.compile_node(arg, output_buf, 0);
-                    output_buf.push((Opcode::PArg as u32, arg.span));
+                    output_buf.push((encode!(PArg), arg.span));
                 }
 
                 let func = self.functions.get_mut(self.current_function).unwrap();
                 let fptr = func.get_var_safe(callee).unwrap_or_else(|| {
                     let fptr = self.get_func(&format!("@{callee}_0"));
                     let const_id = self.add_constant(ValueBuilder::Function(fptr));
-                    output_buf.push((Opcode::Load as u32 | ((const_id as u32) << 16), node.span));
+                    output_buf.push((
+                        encode!(Load, [
+                            u8:0u8,
+                            u16:const_id
+                        ]),
+                        node.span,
+                    ));
                     0
                 });
-                output_buf.push((Opcode::Move as u32 | ((fptr as u32) << 8), node.span));
-                output_buf.push((Opcode::Call as u32 | ((fptr as u32) << 8), node.span));
+                output_buf.push((
+                    encode!(Move, [
+                        u8:fptr,
+                    ]),
+                    node.span,
+                ));
+                output_buf.push((
+                    encode!(Call, [
+                        u8:fptr,
+                    ]),
+                    node.span,
+                ));
                 if dest != 0 {
-                    output_buf.push((Opcode::Move as u32 | ((dest as u32) << 8), node.span))
+                    output_buf.push((
+                        encode!(Move, [
+                            u8:dest,
+                        ]),
+                        node.span,
+                    ));
                 }
             }
         }
