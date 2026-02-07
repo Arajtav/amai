@@ -3,22 +3,35 @@ use super::arena::Arena;
 #[derive(Debug, Clone, Copy, PartialEq, Hash, Eq)]
 pub struct Value(pub u64);
 
+impl Default for Value {
+    fn default() -> Self {
+        Self::nil()
+    }
+}
+
+#[inline(always)]
+fn signed_truncate_i64_i32(v: i64) -> i32 {
+    let sign = (v >> 63) & 1;
+    let magnitude = v & 0x7FFF_FFFF;
+    i32::try_from((sign << 31) | magnitude).unwrap()
+}
+
 impl Value {
     #[inline(always)]
     pub fn from_int(x: i64) -> Self {
-        Self(x as u64)
+        Self(x.cast_unsigned())
     }
     #[inline(always)]
-    pub fn to_int(&self) -> i64 {
-        self.0 as i64
+    pub fn to_int(self) -> i64 {
+        self.0.cast_signed()
     }
 
     #[inline(always)]
     pub fn from_bool(x: bool) -> Self {
-        Self(x as u64)
+        Self(u64::from(x))
     }
     #[inline(always)]
-    pub fn to_bool(&self) -> bool {
+    pub fn to_bool(self) -> bool {
         self.0 != 0
     }
 
@@ -32,7 +45,7 @@ impl Value {
         Self(x.to_bits())
     }
     #[inline(always)]
-    pub fn to_float(&self) -> f64 {
+    pub fn to_float(self) -> f64 {
         f64::from_bits(self.0)
     }
 
@@ -41,174 +54,194 @@ impl Value {
         Self(addr as u64)
     }
     #[inline(always)]
-    pub fn to_ptr(&self) -> usize {
-        self.0 as usize
+    pub fn to_ptr(self) -> usize {
+        usize::try_from(self.0).expect("lhs address does not fit in usize")
     }
 
     #[inline(always)]
-    pub fn iadd(&self, other: Self) -> Result<Self, String> {
+    pub fn iadd(self, other: Self) -> Result<Self, String> {
         let lhs = self.to_int();
         let rhs = other.to_int();
-        Ok(Self::from_int(lhs.checked_add(rhs).ok_or(format!("Addition overflow (left: {lhs}, right: {rhs})"))?))
+        Ok(Self::from_int(lhs.checked_add(rhs).ok_or(format!(
+            "Addition overflow (left: {lhs}, right: {rhs})"
+        ))?))
     }
     #[inline(always)]
-    pub fn isub(&self, other: Self) -> Result<Self, String> {
+    pub fn isub(self, other: Self) -> Result<Self, String> {
         let lhs = self.to_int();
         let rhs = other.to_int();
-        Ok(Self::from_int(lhs.checked_sub(rhs).ok_or(format!("Subtraction overflow (left: {lhs}, right: {rhs})"))?))
+        Ok(Self::from_int(lhs.checked_sub(rhs).ok_or(format!(
+            "Subtraction overflow (left: {lhs}, right: {rhs})"
+        ))?))
     }
     #[inline(always)]
-    pub fn imul(&self, other: Self) -> Result<Self, String> {
+    pub fn imul(self, other: Self) -> Result<Self, String> {
         let lhs = self.to_int();
         let rhs = other.to_int();
-        Ok(Self::from_int(self.to_int().checked_mul(other.to_int()).ok_or(format!("Multiplication overflow (left: {lhs}, right: {rhs})"))?))
+        Ok(Self::from_int(
+            self.to_int().checked_mul(other.to_int()).ok_or(format!(
+                "Multiplication overflow (left: {lhs}, right: {rhs})"
+            ))?,
+        ))
     }
     #[inline(always)]
-    pub fn idiv(&self, other: Self) -> Result<Self, String> {
+    pub fn idiv(self, other: Self) -> Result<Self, String> {
         let lhs = self.to_int();
         let rhs = other.to_int();
-        if rhs == 0 { return Err(String::from("Division by zero (left: {lhs}, right: {rhs})")) }
-        Ok(Self::from_int(lhs.checked_div(rhs).ok_or(format!("Division overflow (left: {lhs}, right: {rhs})"))?))
+        if rhs == 0 {
+            return Err(String::from("Division by zero (left: {lhs}, right: {rhs})"));
+        }
+        Ok(Self::from_int(lhs.checked_div(rhs).ok_or(format!(
+            "Division overflow (left: {lhs}, right: {rhs})"
+        ))?))
     }
     #[inline(always)]
-    pub fn irem(&self, other: Self) -> Result<Self, String> {
+    pub fn irem(self, other: Self) -> Result<Self, String> {
         let lhs = self.to_int();
         let rhs = other.to_int();
-        if rhs == 0 { return Err(format!("Division by zero (left: {lhs}, right: {rhs})")) }
-        Ok(Self::from_int(lhs.checked_rem(rhs).ok_or(format!("Remainder overflow (left: {lhs}, right: {rhs})"))?))
+        if rhs == 0 {
+            return Err(format!("Division by zero (left: {lhs}, right: {rhs})"));
+        }
+        Ok(Self::from_int(lhs.checked_rem(rhs).ok_or(format!(
+            "Remainder overflow (left: {lhs}, right: {rhs})"
+        ))?))
     }
     #[inline(always)]
-    pub fn fadd(&self, other: Self) -> Self {
+    pub fn fadd(self, other: Self) -> Self {
         Self::from_float(self.to_float() + other.to_float())
     }
     #[inline(always)]
-    pub fn fsub(&self, other: Self) -> Self {
+    pub fn fsub(self, other: Self) -> Self {
         Self::from_float(self.to_float() - other.to_float())
     }
     #[inline(always)]
-    pub fn fmul(&self, other: Self) -> Self {
+    pub fn fmul(self, other: Self) -> Self {
         Self::from_float(self.to_float() * other.to_float())
     }
     #[inline(always)]
-    pub fn fdiv(&self, other: Self) -> Option<Self> {
+    pub fn fdiv(self, other: Self) -> Option<Self> {
         let o = other.to_float();
-        if o == 0.0 { return None }
+        if o == 0.0 {
+            return None;
+        }
         Some(Self::from_float(self.to_float() / o))
     }
     #[inline(always)]
-    pub fn frem(&self, other: Self) -> Option<Self> {
+    pub fn frem(self, other: Self) -> Option<Self> {
         let o = other.to_float();
-        if o == 0.0 { return None }
+        if o == 0.0 {
+            return None;
+        }
         Some(Self::from_float(self.to_float() % o))
     }
     #[inline(always)]
-    pub fn bor(&self, other: Self) -> Self {
+    pub fn bor(self, other: Self) -> Self {
         Self::from_int(self.to_int() | other.to_int())
     }
     #[inline(always)]
-    pub fn band(&self, other: Self) -> Self {
+    pub fn band(self, other: Self) -> Self {
         Self::from_int(self.to_int() & other.to_int())
     }
     #[inline(always)]
-    pub fn bxor(&self, other: Self) -> Self {
+    pub fn bxor(self, other: Self) -> Self {
         Self::from_int(self.to_int() ^ other.to_int())
     }
     #[inline(always)]
-    pub fn bnot(&self) -> Self {
+    pub fn bnot(self) -> Self {
         Self::from_int(!self.to_int())
     }
     #[inline(always)]
-    pub fn lor(&self, other: Self) -> Self {
+    pub fn lor(self, other: Self) -> Self {
         Self::from_bool(self.to_bool() || other.to_bool())
     }
     #[inline(always)]
-    pub fn land(&self, other: Self) -> Self {
+    pub fn land(self, other: Self) -> Self {
         Self::from_bool(self.to_bool() && other.to_bool())
     }
     #[inline(always)]
-    pub fn lnot(&self) -> Self {
+    pub fn lnot(self) -> Self {
         Self::from_bool(!self.to_bool())
     }
     #[inline(always)]
-    pub fn cmeq(&self, other: Self) -> Self {
+    pub fn cmeq(self, other: Self) -> Self {
         Self::from_bool(self.0 == other.0)
     }
     #[inline(always)]
-    pub fn cmne(&self, other: Self) -> Self {
+    pub fn cmne(self, other: Self) -> Self {
         Self::from_bool(self.0 != other.0)
     }
     #[inline(always)]
-    pub fn icgt(&self, other: Self) -> Self {
+    pub fn icgt(self, other: Self) -> Self {
         Self::from_bool(self.to_int() > other.to_int())
     }
     #[inline(always)]
-    pub fn iclt(&self, other: Self) -> Self {
+    pub fn iclt(self, other: Self) -> Self {
         Self::from_bool(self.to_int() < other.to_int())
     }
     #[inline(always)]
-    pub fn icge(&self, other: Self) -> Self {
+    pub fn icge(self, other: Self) -> Self {
         Self::from_bool(self.to_int() >= other.to_int())
     }
     #[inline(always)]
-    pub fn icle(&self, other: Self) -> Self {
+    pub fn icle(self, other: Self) -> Self {
         Self::from_bool(self.to_int() <= other.to_int())
     }
     #[inline(always)]
-    pub fn fcgt(&self, other: Self) -> Self {
+    pub fn fcgt(self, other: Self) -> Self {
         Self::from_bool(self.to_float() > other.to_float())
     }
     #[inline(always)]
-    pub fn fclt(&self, other: Self) -> Self {
+    pub fn fclt(self, other: Self) -> Self {
         Self::from_bool(self.to_float() < other.to_float())
     }
     #[inline(always)]
-    pub fn fcge(&self, other: Self) -> Self {
+    pub fn fcge(self, other: Self) -> Self {
         Self::from_bool(self.to_float() >= other.to_float())
     }
     #[inline(always)]
-    pub fn fcle(&self, other: Self) -> Self {
+    pub fn fcle(self, other: Self) -> Self {
         Self::from_bool(self.to_float() <= other.to_float())
     }
     #[inline(always)]
-    pub fn ineg(&self) -> Self {
+    pub fn ineg(self) -> Self {
         Self::from_int(-self.to_int())
     }
     #[inline(always)]
-    pub fn fneg(&self) -> Self {
+    pub fn fneg(self) -> Self {
         Self::from_float(-self.to_float())
     }
     #[inline(always)]
-    pub fn lshf(&self, other: Self) -> Result<Self, String> {
+    pub fn lshf(self, other: Self) -> Result<Self, String> {
         let lhs = self.to_int();
-        let rhs = other.to_int();
+        let rhs = signed_truncate_i64_i32(other.to_int());
         if rhs < 0 {
-            return Err(format!("Shift left by negative integer (left: {lhs}, right: {rhs})"))
+            return Err(format!(
+                "Shift left by negative integer (left: {lhs}, right: {rhs})"
+            ));
         }
-        Ok(Self::from_int(lhs.checked_shl(rhs as u32).ok_or(format!("Shift left overflow (left: {lhs}, right: {rhs})"))?))
+        Ok(Self::from_int(lhs.checked_shl(rhs.cast_unsigned()).ok_or(
+            format!("Shift left overflow (left: {lhs}, right: {rhs})"),
+        )?))
     }
     #[inline(always)]
-    pub fn rshf(&self, other: Self) -> Result<Self, String> {
+    pub fn rshf(self, other: Self) -> Result<Self, String> {
         let lhs = self.to_int();
-        let rhs = other.to_int();
+        let rhs = signed_truncate_i64_i32(other.to_int());
         if rhs < 0 {
-            return Err(format!("Shift right by negative integer (left: {lhs}, right: {rhs})"))
+            return Err(format!(
+                "Shift right by negative integer (left: {lhs}, right: {rhs})"
+            ));
         }
-        Ok(Self::from_int(lhs.checked_shr(rhs as u32).ok_or(format!("Shift right overflow (left: {lhs}, right: {rhs})"))?))
+        Ok(Self::from_int(lhs.checked_shr(rhs.cast_unsigned()).ok_or(
+            format!("Shift right overflow (left: {lhs}, right: {rhs})"),
+        )?))
     }
     #[inline(always)]
-    pub fn scon(&self, other: Self, arena: &mut Arena) -> Self {
-        let lhs_addr = self.0 as usize;
-        let rhs_addr = other.0 as usize;
-        let lhs_size = u32::from_le_bytes(
-            arena.fetch(lhs_addr, 4)
-            .try_into()
-            .unwrap()
-        ) as usize;
-        let rhs_size = u32::from_le_bytes(
-            arena.fetch(rhs_addr, 4)
-            .try_into()
-            .unwrap()
-        ) as usize;
+    pub fn scon(self, other: Self, arena: &mut Arena) -> Self {
+        let lhs_addr = self.to_ptr();
+        let rhs_addr = other.to_ptr();
+        let lhs_size = u32::from_le_bytes(arena.fetch(lhs_addr, 4).try_into().unwrap()) as usize;
+        let rhs_size = u32::from_le_bytes(arena.fetch(rhs_addr, 4).try_into().unwrap()) as usize;
         let new_len = lhs_size + rhs_size;
         let addr = arena.alloc(new_len + 4, 1);
         arena.write(addr, &new_len.to_le_bytes());
@@ -219,39 +252,17 @@ impl Value {
         Self::from_ptr(addr)
     }
     #[inline(always)]
-    pub fn sceq(&self, other: Self, arena: &mut Arena) -> Self {
-        let lhs_addr = self.0 as usize;
-        let rhs_addr = other.0 as usize;
-        let lhs_size = u32::from_le_bytes(
-            arena.fetch(lhs_addr, 4)
-            .try_into()
-            .unwrap()
-        ) as usize;
-        let rhs_size = u32::from_le_bytes(
-            arena.fetch(rhs_addr, 4)
-            .try_into()
-            .unwrap()
-        ) as usize;
+    pub fn sceq(self, other: Self, arena: &mut Arena) -> Self {
+        let lhs_addr = self.to_ptr();
+        let rhs_addr = other.to_ptr();
+        let lhs_size = arena.fetch_u32(lhs_addr) as usize;
+        let rhs_size = arena.fetch_u32(rhs_addr) as usize;
         let lhs_data = arena.fetch(lhs_addr + 4, lhs_size);
         let rhs_data = arena.fetch(rhs_addr + 4, rhs_size);
         Self::from_bool(lhs_data == rhs_data)
     }
     #[inline(always)]
-    pub fn scne(&self, other: Self, arena: &mut Arena) -> Self {
-        let lhs_addr = self.0 as usize;
-        let rhs_addr = other.0 as usize;
-        let lhs_size = u32::from_le_bytes(
-            arena.fetch(lhs_addr, 4)
-            .try_into()
-            .unwrap()
-        ) as usize;
-        let rhs_size = u32::from_le_bytes(
-            arena.fetch(rhs_addr, 4)
-            .try_into()
-            .unwrap()
-        ) as usize;
-        let lhs_data = arena.fetch(lhs_addr + 4, lhs_size);
-        let rhs_data = arena.fetch(rhs_addr + 4, rhs_size);
-        Self::from_bool(lhs_data != rhs_data)
+    pub fn scne(self, other: Self, arena: &mut Arena) -> Self {
+        self.sceq(other, arena).lnot()
     }
 }

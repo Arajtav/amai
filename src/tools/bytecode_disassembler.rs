@@ -40,26 +40,26 @@ pub fn disassemble(bytecode: &[u32]) -> String {
         }
 
         match opcode {
-            Opcode::LOAD | Opcode::CARG => {
+            Opcode::Load | Opcode::CArg => {
                 let (dest, const_id) = decode_args!([u8, u16]);
                 write_out!(" r{dest} #{const_id}");
             }
-            Opcode::IADD
-            | Opcode::ISUB
-            | Opcode::IMUL
-            | Opcode::IDIV
-            | Opcode::IREM
-            | Opcode::FADD
-            | Opcode::FSUB
-            | Opcode::FMUL
-            | Opcode::FDIV
-            | Opcode::FREM
-            | Opcode::BOR
-            | Opcode::BAND
-            | Opcode::BXOR
-            | Opcode::LOR
-            | Opcode::LAND
-            | Opcode::CMEQ
+            Opcode::IAdd
+            | Opcode::ISub
+            | Opcode::IMul
+            | Opcode::IDiv
+            | Opcode::IRem
+            | Opcode::FAdd
+            | Opcode::FSub
+            | Opcode::FMul
+            | Opcode::FDiv
+            | Opcode::FRem
+            | Opcode::BOr
+            | Opcode::BAnd
+            | Opcode::BXor
+            | Opcode::LOr
+            | Opcode::LAnd
+            | Opcode::CMEq
             | Opcode::CMNE
             | Opcode::ICGT
             | Opcode::ICLT
@@ -69,19 +69,19 @@ pub fn disassemble(bytecode: &[u32]) -> String {
             | Opcode::FCLT
             | Opcode::FCGE
             | Opcode::FCLE
-            | Opcode::LSHF
-            | Opcode::RSHF
-            | Opcode::SCON
-            | Opcode::SCEQ
+            | Opcode::LShf
+            | Opcode::RShf
+            | Opcode::SCon
+            | Opcode::SCEq
             | Opcode::SCNE => {
                 let (dest, src1, src2) = decode_args!([u8, u8, u8]);
                 write_out!(" r{dest} r{src1} r{src2}");
             }
-            Opcode::BNOT | Opcode::LNOT | Opcode::INEG | Opcode::FNEG | Opcode::MOVE => {
+            Opcode::BNot | Opcode::LNot | Opcode::INeg | Opcode::FNeg | Opcode::Move => {
                 let (dest, src1) = decode_args!([u8, u8]);
                 write_out!(" r{dest} r{src1}");
             }
-            Opcode::JUMP => {
+            Opcode::Jump => {
                 let a = get_arg!(i16, 8);
                 let dest = if a >= 0 {
                     format!("+{a}")
@@ -90,7 +90,7 @@ pub fn disassemble(bytecode: &[u32]) -> String {
                 };
                 write_out!(" {dest}");
             }
-            Opcode::JITR | Opcode::JIFL => {
+            Opcode::JITr | Opcode::JIFl => {
                 let (a, src1) = decode_args!([i16, u8]);
                 let dest = if a >= 0 {
                     format!("+{a}")
@@ -99,19 +99,19 @@ pub fn disassemble(bytecode: &[u32]) -> String {
                 };
                 write_out!(" {dest} r{src1}");
             }
-            Opcode::CALL => {
+            Opcode::Call => {
                 let dest = get_arg!(u8, 8);
                 write_out!(" r{dest}");
             }
-            Opcode::PARG => {
+            Opcode::PArg => {
                 let src = get_arg!(u8, 8);
                 write_out!(" r{src}");
             }
-            Opcode::CEXT => {
+            Opcode::CExt => {
                 let func = get_arg!(u32, 8);
                 write_out!(" ${func}");
             }
-            Opcode::NOP | Opcode::HALT | Opcode::RETN => {}
+            Opcode::Nop | Opcode::Halt | Opcode::Retn => {}
         }
         output.push('\n');
     }

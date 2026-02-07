@@ -3,51 +3,69 @@ use strum_macros::AsRefStr;
 
 #[repr(u8)]
 #[derive(TryFromPrimitive, AsRefStr)]
+#[strum(serialize_all = "UPPERCASE")]
+#[allow(clippy::upper_case_acronyms)]
 pub enum Opcode {
-    NOP = 0x00,
-    LOAD = 0x01,
-    IADD = 0x02,
-    ISUB = 0x03,
-    IMUL = 0x04,
-    IDIV = 0x05,
-    IREM = 0x06,
-    FADD = 0x07,
-    FSUB = 0x08,
-    FMUL = 0x09,
-    FDIV = 0x0A,
-    FREM = 0x0B,
-    BOR = 0x0C,
-    BAND = 0x0D,
-    BXOR = 0x0E,
-    BNOT = 0x0F,
-    LOR = 0x10,
-    LAND = 0x11,
-    LNOT = 0x12,
-    CMEQ = 0x13,
+    Nop = 0x00,
+
+    Load = 0x01,
+
+    IAdd = 0x02,
+    ISub = 0x03,
+    IMul = 0x04,
+    IDiv = 0x05,
+    IRem = 0x06,
+
+    FAdd = 0x07,
+    FSub = 0x08,
+    FMul = 0x09,
+    FDiv = 0x0A,
+    FRem = 0x0B,
+
+    BOr = 0x0C,
+    BAnd = 0x0D,
+    BXor = 0x0E,
+    BNot = 0x0F,
+
+    LOr = 0x10,
+    LAnd = 0x11,
+    LNot = 0x12,
+
+    CMEq = 0x13,
     CMNE = 0x14,
+
     ICGT = 0x15,
     ICLT = 0x16,
     ICGE = 0x17,
     ICLE = 0x18,
+
     FCGT = 0x19,
     FCLT = 0x1A,
     FCGE = 0x1B,
     FCLE = 0x1C,
-    JUMP = 0x1D, // NOTE: the destination operand (register) will be read as an instruction index
-    JITR = 0x1E, // jump if true
-    JIFL = 0x1F, // jump if false
-    CALL = 0x20,
-    RETN = 0x21,
-    INEG = 0x22,
-    FNEG = 0x23,
-    MOVE = 0x24,
-    PARG = 0x25, // push arg (to caller args)
-    CARG = 0x26, // copy arg (from caller args)
-    CEXT = 0x27, // call external
-    LSHF = 0x28,
-    RSHF = 0x29,
-    SCON = 0x2A,
-    SCEQ = 0x2B,
+
+    Jump = 0x1D, // NOTE: the destination operand (register) will be read as an instruction index
+    JITr = 0x1E, // jump if true
+    JIFl = 0x1F, // jump if false
+
+    Call = 0x20,
+    Retn = 0x21,
+
+    INeg = 0x22,
+    FNeg = 0x23,
+
+    Move = 0x24,
+
+    PArg = 0x25, // push arg (to caller args)
+    CArg = 0x26, // copy arg (from caller args)
+    CExt = 0x27, // call external
+
+    LShf = 0x28,
+    RShf = 0x29,
+
+    SCon = 0x2A,
+    SCEq = 0x2B,
     SCNE = 0x2C,
-    HALT = 0xFF,
+
+    Halt = 0xFF,
 }

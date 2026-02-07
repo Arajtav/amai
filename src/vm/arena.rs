@@ -4,9 +4,7 @@ pub struct Arena {
 
 impl Arena {
     pub fn new() -> Self {
-        Self {
-            inner: Vec::new(),
-        }
+        Self { inner: Vec::new() }
     }
 
     pub fn alloc(&mut self, size: usize, align: usize) -> usize {
@@ -25,5 +23,9 @@ impl Arena {
 
     pub fn fetch(&self, addr: usize, size: usize) -> &[u8] {
         &self.inner[addr..(addr + size)]
+    }
+
+    pub fn fetch_u32(&self, addr: usize) -> u32 {
+        u32::from_le_bytes(self.fetch(addr, 4).try_into().unwrap())
     }
 }
