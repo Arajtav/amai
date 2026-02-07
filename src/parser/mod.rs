@@ -127,7 +127,7 @@ impl<'p> Parser<'p> {
             return Err(Diagnostic::new(
                 self.path.display(),
                 "Expected expression, found end of input",
-                self.tokens.last().unwrap().span,
+                self.tokens.last().unwrap().span.clone(),
             ));
         };
 
@@ -245,7 +245,7 @@ impl<'p> Parser<'p> {
     }
 
     fn parse_block(&mut self) -> Result<ASTNode, Diagnostic> {
-        let mut stmt_span = self.tokens.get(self.pos).unwrap().span;
+        let mut stmt_span = self.tokens.get(self.pos).unwrap().span.clone();
         self.pos += 1;
 
         let mut stmts = Vec::new();
@@ -267,7 +267,7 @@ impl<'p> Parser<'p> {
     }
 
     fn parse_let(&mut self) -> Result<ASTNode, Diagnostic> {
-        let mut stmt_span = self.tokens.get(self.pos).unwrap().span;
+        let mut stmt_span = self.tokens.get(self.pos).unwrap().span.clone();
         self.pos += 1;
 
         let ident = self.expect(TokenType::Identifier)?;
@@ -339,7 +339,7 @@ impl<'p> Parser<'p> {
     }
 
     fn parse_if(&mut self) -> Result<ASTNode, Diagnostic> {
-        let mut stmt_span = self.tokens.get(self.pos).unwrap().span;
+        let mut stmt_span = self.tokens.get(self.pos).unwrap().span.clone();
         self.pos += 1;
 
         let condition = self.parse_expr(0)?;
@@ -367,7 +367,7 @@ impl<'p> Parser<'p> {
     }
 
     fn parse_while(&mut self) -> Result<ASTNode, Diagnostic> {
-        let mut stmt_span = self.tokens.get(self.pos).unwrap().span;
+        let mut stmt_span = self.tokens.get(self.pos).unwrap().span.clone();
         self.pos += 1;
 
         let condition = self.parse_expr(0)?;
@@ -390,7 +390,7 @@ impl<'p> Parser<'p> {
             return Err(Diagnostic::new(
                 self.path.display(),
                 "Expected type, found end of input",
-                self.tokens.last().unwrap().span,
+                self.tokens.last().unwrap().span.clone(),
             ));
         };
 
@@ -430,7 +430,7 @@ impl<'p> Parser<'p> {
             _ => Err(Diagnostic::new(
                 self.path.display(),
                 format!("Expected type, found {}", token.err_str()),
-                self.tokens.last().unwrap().span,
+                self.tokens.last().unwrap().span.clone(),
             )),
         }
     }
@@ -451,7 +451,7 @@ impl<'p> Parser<'p> {
             Err(Diagnostic::new(
                 self.path.display(),
                 format!("Expected {}, found end of input", expected.err_str()),
-                self.tokens.last().unwrap().span,
+                self.tokens.last().unwrap().span.clone(),
             ))
         }
     }

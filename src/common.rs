@@ -108,17 +108,7 @@ impl Operator {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub(crate) struct Span {
-    pub(crate) start: usize,
-    pub(crate) end: usize,
-}
-
-impl From<std::ops::Range<usize>> for Span {
-    fn from(value: std::ops::Range<usize>) -> Self {
-        Self { start: value.start, end: value.end }
-    }
-}
+pub type Span = std::ops::Range<usize>;
 
 impl std::fmt::Display for Operator {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

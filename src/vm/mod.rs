@@ -126,35 +126,35 @@ impl AmaiVM {
                 let src2 = (*frame).registers[((inst >> 24) & 0xFF) as usize];
 
                 (*frame).registers[((inst >> 8) & 0xFF) as usize] =
-                    src1.iadd(src2).map_err(|err| (err, *span))?;
+                    src1.iadd(src2).map_err(|err| (err, span.clone()))?;
             }
             Opcode::ISUB => {
                 let src1 = (*frame).registers[((inst >> 16) & 0xFF) as usize];
                 let src2 = (*frame).registers[((inst >> 24) & 0xFF) as usize];
 
                 (*frame).registers[((inst >> 8) & 0xFF) as usize] =
-                    src1.isub(src2).map_err(|err| (err, *span))?;
+                    src1.isub(src2).map_err(|err| (err, span.clone()))?;
             }
             Opcode::IMUL => {
                 let src1 = (*frame).registers[((inst >> 16) & 0xFF) as usize];
                 let src2 = (*frame).registers[((inst >> 24) & 0xFF) as usize];
 
                 (*frame).registers[((inst >> 8) & 0xFF) as usize] =
-                    src1.imul(src2).map_err(|err| (err, *span))?;
+                    src1.imul(src2).map_err(|err| (err, span.clone()))?;
             }
             Opcode::IDIV => {
                 let src1 = (*frame).registers[((inst >> 16) & 0xFF) as usize];
                 let src2 = (*frame).registers[((inst >> 24) & 0xFF) as usize];
 
                 (*frame).registers[((inst >> 8) & 0xFF) as usize] =
-                    src1.idiv(src2).map_err(|err| (err, *span))?;
+                    src1.idiv(src2).map_err(|err| (err, span.clone()))?;
             }
             Opcode::IREM => {
                 let src1 = (*frame).registers[((inst >> 16) & 0xFF) as usize];
                 let src2 = (*frame).registers[((inst >> 24) & 0xFF) as usize];
 
                 (*frame).registers[((inst >> 8) & 0xFF) as usize] =
-                    src1.irem(src2).map_err(|err| (err, *span))?;
+                    src1.irem(src2).map_err(|err| (err, span.clone()))?;
             }
             Opcode::FADD => {
                 let src1 = (*frame).registers[((inst >> 16) & 0xFF) as usize];
@@ -180,7 +180,7 @@ impl AmaiVM {
 
                 (*frame).registers[((inst >> 8) & 0xFF) as usize] = src1
                     .fdiv(src2)
-                    .ok_or(("Division by zero".to_string(), *span))?;
+                    .ok_or(("Division by zero".to_string(), span.clone()))?;
             }
             Opcode::FREM => {
                 let src1 = (*frame).registers[((inst >> 16) & 0xFF) as usize];
@@ -188,7 +188,7 @@ impl AmaiVM {
 
                 (*frame).registers[((inst >> 8) & 0xFF) as usize] = src1
                     .frem(src2)
-                    .ok_or(("Division by zero".to_string(), *span))?;
+                    .ok_or(("Division by zero".to_string(), span.clone()))?;
             }
             Opcode::BOR => {
                 let src1 = (*frame).registers[((inst >> 16) & 0xFF) as usize];
@@ -368,14 +368,14 @@ impl AmaiVM {
                 let src2 = (*frame).registers[((inst >> 24) & 0xFF) as usize];
 
                 (*frame).registers[((inst >> 8) & 0xFF) as usize] =
-                    src1.lshf(src2).map_err(|err| (err, *span))?;
+                    src1.lshf(src2).map_err(|err| (err, span.clone()))?;
             }
             Opcode::RSHF => {
                 let src1 = (*frame).registers[((inst >> 16) & 0xFF) as usize];
                 let src2 = (*frame).registers[((inst >> 24) & 0xFF) as usize];
 
                 (*frame).registers[((inst >> 8) & 0xFF) as usize] =
-                    src1.rshf(src2).map_err(|err| (err, *span))?;
+                    src1.rshf(src2).map_err(|err| (err, span.clone()))?;
             }
             Opcode::SCON => {
                 let src1 = (*frame).registers[((inst >> 16) & 0xFF) as usize];
