@@ -4,7 +4,7 @@ pub mod function;
 pub mod inst;
 pub mod value;
 
-use crate::common::Span;
+use crate::{codegen::value::ValueBuilder, common::Span};
 use arena::Arena;
 use call_frame::CallFrame;
 use function::Function;
@@ -16,7 +16,7 @@ pub type AmaiExtFn = Rc<dyn Fn(&mut AmaiVM, &[Value])>;
 
 pub struct AmaiVM {
     pub frames: Vec<CallFrame>,
-    pub constants: Box<[Value; 65536]>,
+    pub constants: Vec<Value>,
     pub running: bool,
     pub functions: Vec<(Rc<Function>, [Value; 64])>,
     pub allow_large_bytecode: bool,
@@ -28,16 +28,41 @@ impl AmaiVM {
     pub fn new(allow_large_bytecode: bool) -> Self {
         Self {
             frames: Vec::new(),
-            constants: vec![Value::default(); 65536]
-                .into_boxed_slice()
-                .try_into()
-                .unwrap(),
+            constants: Vec::new(),
             running: false,
             functions: Vec::new(),
             allow_large_bytecode,
             external_functions: Vec::new(),
             arena: Arena::new(),
         }
+    }
+
+    pub fn precompile_constants(&mut self, constants: &[ValueBuilder]) {
+        let mut new_constants = Vec::new();
+        for value in constants {
+            if value.is_large() {
+                let addr = self.arena.alloc(value.size(), value.align());
+                self.arena.write(addr, &value.data());
+                new_constants.push(Value::from_ptr(addr));
+            } else {
+                new_constants.push(value.to_value());
+            }
+        }
+        self.constants = new_constants;
+    }
+
+    pub fn potentially_alloc(&mut self, values: &[ValueBuilder]) -> Vec<Value> {
+        let mut new_vals = Vec::new();
+        for value in values {
+            if value.is_large() {
+                let addr = self.arena.alloc(value.size(), value.align());
+                self.arena.write(addr, &value.data());
+                new_vals.push(Value::from_ptr(addr));
+            } else {
+                new_vals.push(value.to_value())
+            }
+        }
+        new_vals
     }
 
     pub fn add_extern_fn<F: Fn(&mut AmaiVM, &[Value]) + 'static>(&mut self, f: F) -> usize {
