@@ -4,7 +4,10 @@ pub mod ftypes;
 use std::path::{Path, PathBuf};
 
 use super::lexer::token::{Token, TokenType};
-use crate::{common::{Operator, Span}, diagnostic::Diagnostic};
+use crate::{
+    common::{Operator, Span},
+    diagnostic::Diagnostic,
+};
 use ast::{ASTModule, ASTNode, ASTNodeType};
 use ftypes::{FrontendType, FrontendTypeType};
 
@@ -125,7 +128,7 @@ impl<'p> Parser<'p> {
     fn parse_primary(&mut self) -> Result<ASTNode, Diagnostic> {
         let Some(token) = self.tokens.get(self.pos).cloned() else {
             return Err(Diagnostic::new(
-                self.path.display(),
+                &self.path.display(),
                 "Expected expression, found end of input",
                 self.tokens.last().unwrap().span,
             ));
@@ -237,7 +240,7 @@ impl<'p> Parser<'p> {
             TokenType::If => self.parse_if(),
             TokenType::While => self.parse_while(),
             _ => Err(Diagnostic::new(
-                self.path.display(),
+                &self.path.display(),
                 format!("Expected expression, found {}", token.err_str()),
                 token.span,
             )),
@@ -388,7 +391,7 @@ impl<'p> Parser<'p> {
     fn parse_type(&mut self) -> Result<FrontendType, Diagnostic> {
         let Some(token) = self.tokens.get(self.pos).cloned() else {
             return Err(Diagnostic::new(
-                self.path.display(),
+                &self.path.display(),
                 "Expected type, found end of input",
                 self.tokens.last().unwrap().span,
             ));
@@ -428,7 +431,7 @@ impl<'p> Parser<'p> {
                 })
             }
             _ => Err(Diagnostic::new(
-                self.path.display(),
+                &self.path.display(),
                 format!("Expected type, found {}", token.err_str()),
                 self.tokens.last().unwrap().span,
             )),
@@ -442,14 +445,14 @@ impl<'p> Parser<'p> {
                 Ok(token)
             } else {
                 Err(Diagnostic::new(
-                    self.path.display(),
+                    &self.path.display(),
                     format!("Expected {}, found {}", expected.err_str(), token.err_str()),
                     token.span,
                 ))
             }
         } else {
             Err(Diagnostic::new(
-                self.path.display(),
+                &self.path.display(),
                 format!("Expected {}, found end of input", expected.err_str()),
                 self.tokens.last().unwrap().span,
             ))

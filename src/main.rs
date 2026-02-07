@@ -1,15 +1,17 @@
 #![allow(unused)]
 #![allow(clippy::inline_always)]
+#![allow(clippy::missing_errors_doc)]
+#![allow(clippy::too_many_lines)]
 
+mod cli;
+mod codegen;
+mod common;
+mod diagnostic;
 mod lexer;
 mod parser;
 mod semantic_checker;
-mod codegen;
-mod vm;
-mod common;
-mod cli;
-mod diagnostic;
 mod tools;
+mod vm;
 
 use crate::cli::{Cli, Command};
 use colored::Colorize;
@@ -25,42 +27,53 @@ fn main() {
 
 pub fn run_cli(cli: Cli) -> Result<(), String> {
     match cli.command {
-        Command::Run { input, show_bytecode } => match input {
+        Command::Run {
+            input,
+            show_bytecode,
+        } => match input {
             Some(path) => run_path(&path, show_bytecode),
-            None => Err(format!("{}: Project runs are not supported for now", "error".bright_red().bold())),
-        }
+            None => Err(format!(
+                "{}: Project runs are not supported for now",
+                "error".bright_red().bold()
+            )),
+        },
     }
 }
 
 pub fn run_path(input: &str, show_bytecode: bool) -> Result<(), String> {
     use std::fs;
 
-    let contents = fs::read_to_string(&input)
-        .map_err(|_| format!("{}: No such file: `{}`", "error".bright_red().bold(), input.italic()))?
+    let contents = fs::read_to_string(input)
+        .map_err(|_| {
+            format!(
+                "{}: No such file: `{}`",
+                "error".bright_red().bold(),
+                input.italic()
+            )
+        })?
         .replace("\r\n", "\n");
 
-    let tokens = match lexer::lex(&input, &contents) {
+    let tokens = match lexer::lex(input, &contents) {
         Ok(toks) => toks,
         Err(err) => {
             let lines = contents.lines().collect::<Vec<_>>();
             let line_starts = line_starts(&contents);
             return Err(err.display(&line_starts, &lines));
-        },
+        }
     };
 
-    let mut parser = parser::Parser::new(&input, &tokens);
+    let mut parser = parser::Parser::new(input, &tokens);
     let mut ast = match parser.parse() {
         Ok(ast) => ast,
         Err(err) => {
             let lines = contents.lines().collect::<Vec<_>>();
             let line_starts = line_starts(&contents);
-            return Err(
-                err
-                    .iter()
-                    .map(|d| d.display(&line_starts, &lines))
-                    .collect::<Vec<_>>().join("\n")
-            );
-        },
+            return Err(err
+                .iter()
+                .map(|d| d.display(&line_starts, &lines))
+                .collect::<Vec<_>>()
+                .join("\n"));
+        }
     };
 
     let mut sch = semantic_checker::SemanticChecker::new(ast.path.clone());
@@ -71,7 +84,8 @@ pub fn run_path(input: &str, show_bytecode: bool) -> Result<(), String> {
         errors
             .iter()
             .map(|d| d.display(&line_starts, &lines))
-            .collect::<Vec<_>>().join("\n")
+            .collect::<Vec<_>>()
+            .join("\n")
     })?;
 
     Ok(())

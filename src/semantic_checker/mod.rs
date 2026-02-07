@@ -67,7 +67,7 @@ impl SemanticChecker {
                 }
                 if symbol.ty != *ty {
                     return Err(Diagnostic::new(
-                        self.path.display(),
+                        &self.path.display(),
                         format!(
                             "Variable `{name}` is defined as `{}` but found `{}`",
                             &symbol.ty, &ty
@@ -84,7 +84,7 @@ impl SemanticChecker {
         }
 
         Err(Diagnostic::new(
-            self.path.display(),
+            &self.path.display(),
             format!("Couldn't find variable `{name}` in scope"),
             span,
         ))
@@ -97,7 +97,7 @@ impl SemanticChecker {
             .find_map(|scope| scope.get(name))
             .ok_or_else(|| {
                 Diagnostic::new(
-                    self.path.display(),
+                    &self.path.display(),
                     format!("Couldn't find variable `{name}` in scope"),
                     span,
                 )
@@ -108,7 +108,7 @@ impl SemanticChecker {
         match &ftype.ty {
             FrontendTypeType::Identifier(ident) => {
                 TYPES.get(ident).cloned().ok_or(Diagnostic::new(
-                    self.path.display(),
+                    &self.path.display(),
                     format!("Cannot find type `{ident}`"),
                     ftype.span,
                 ))
@@ -205,7 +205,7 @@ impl SemanticChecker {
             ($name:literal, $ty:ident) => {{
                 if self.context == Context::Root {
                     Err(vec![Diagnostic::new(
-                        self.path.display(),
+                        &self.path.display(),
                         concat!($name, " can't be a root-level item"),
                         node.span,
                     )])
@@ -224,7 +224,7 @@ impl SemanticChecker {
             ASTNodeType::Identifier(s) => {
                 if self.context == Context::Root {
                     Err(vec![Diagnostic::new(
-                        self.path.display(),
+                        &self.path.display(),
                         "Identifiers can't be a root-level item",
                         node.span,
                     )])
@@ -241,7 +241,7 @@ impl SemanticChecker {
             ASTNodeType::Block(stmts) => {
                 if self.context == Context::Root {
                     Err(vec![Diagnostic::new(
-                        self.path.display(),
+                        &self.path.display(),
                         "Blocks can't be a root-level item",
                         node.span,
                     )])
@@ -267,7 +267,7 @@ impl SemanticChecker {
             } => {
                 if self.context == Context::Root {
                     Err(vec![Diagnostic::new(
-                        self.path.display(),
+                        &self.path.display(),
                         "Binary operations can't be a root-level item",
                         node.span,
                     )])
@@ -296,7 +296,7 @@ impl SemanticChecker {
                                 {
                                     return Err(
                                     vec![Diagnostic::new(
-                                        self.path.display(),
+                                        &self.path.display(),
                                         format!("Cannot use arithmetic mutation on variable of type `{}`", sym.ty),
                                         node.span,
                                     ).with_secondary_message(Some(format!("Variable `{s}` was defined here:")), sym.defined_at)]
@@ -308,7 +308,7 @@ impl SemanticChecker {
                             }
                             _ => {
                                 return Err(vec![Diagnostic::new(
-                                    self.path.display(),
+                                    &self.path.display(),
                                     "Can only mutate variables",
                                     node.span,
                                 )]);
@@ -324,7 +324,7 @@ impl SemanticChecker {
                         Ok(output)
                     } else {
                         Err(vec![Diagnostic::new(
-                            self.path.display(),
+                            &self.path.display(),
                             format!(
                                 "Cannot apply `{op}` as an infix operator on types `{lhs_ty}` and `{rhs_ty}`",
                             ),
@@ -336,7 +336,7 @@ impl SemanticChecker {
             ASTNodeType::UnaryOp { op, operand, op_ty } => {
                 if self.context == Context::Root {
                     Err(vec![Diagnostic::new(
-                        self.path.display(),
+                        &self.path.display(),
                         "Unary operations can't be a root-level item",
                         node.span,
                     )])
@@ -348,7 +348,7 @@ impl SemanticChecker {
                         Ok(output)
                     } else {
                         Err(vec![Diagnostic::new(
-                            self.path.display(),
+                            &self.path.display(),
                             format!(
                                 "Cannot apply `{op}` as a unary operator on type `{operand_ty}`",
                             ),
@@ -360,7 +360,7 @@ impl SemanticChecker {
             ASTNodeType::LetDecl { name, ty, init } => {
                 if self.context == Context::Root {
                     Err(vec![Diagnostic::new(
-                        self.path.display(),
+                        &self.path.display(),
                         "Variable declarations can't be a root-level item",
                         node.span,
                     )])
@@ -377,7 +377,7 @@ impl SemanticChecker {
                         }
                         if init_ty != var_ty {
                             return Err(vec![Diagnostic::new(
-                                self.path.display(),
+                                &self.path.display(),
                                 format!(
                                     "Variable `{name}` is declared as `{var_ty}` but initialized as `{init_ty}`",
                                 ),
@@ -399,7 +399,7 @@ impl SemanticChecker {
             } => {
                 if self.context == Context::Root {
                     Err(vec![Diagnostic::new(
-                        self.path.display(),
+                        &self.path.display(),
                         "`if` conditionals can't be a root-level item",
                         node.span,
                     )])
@@ -411,7 +411,7 @@ impl SemanticChecker {
                         .inspect(|ty| {
                             if *ty != Type::Bool {
                                 errors.push(Diagnostic::new(
-                                    self.path.display(),
+                                    &self.path.display(),
                                     "Expected boolean condition in `if`",
                                     condition.span,
                                 ));
@@ -428,7 +428,7 @@ impl SemanticChecker {
                                 Ok(then_body_ty)
                             } else {
                                 errors.push(Diagnostic::new(
-                                    self.path.display(),
+                                    &self.path.display(),
                                     format!(
                                         "`if`'s clauses has different return types: `{then_body_ty}` and `{else_body_ty}`",
                                     ),
@@ -438,7 +438,7 @@ impl SemanticChecker {
                             }
                         } else {
                             errors.push(Diagnostic::new(
-                                self.path.display(),
+                                &self.path.display(),
                                 format!(
                                     "Missing `else` clause that evaluates to type `{then_body_ty}`",
                                 ),
@@ -454,7 +454,7 @@ impl SemanticChecker {
             ASTNodeType::While { condition, body } => {
                 if self.context == Context::Root {
                     Err(vec![Diagnostic::new(
-                        self.path.display(),
+                        &self.path.display(),
                         "`while` loops can't be a root-level item",
                         node.span,
                     )])
@@ -463,7 +463,7 @@ impl SemanticChecker {
                     let cond_ty = self.validate_node(condition, true, true)?;
                     if cond_ty != Type::Bool {
                         errors.push(Diagnostic::new(
-                            self.path.display(),
+                            &self.path.display(),
                             "Expected boolean condition in `while`",
                             condition.span,
                         ));
@@ -507,7 +507,7 @@ impl SemanticChecker {
                     .map_err(|err| vec![err])?;
                 if body_ty != return_ty {
                     return Err(vec![Diagnostic::new(
-                        self.path.display(),
+                        &self.path.display(),
                         format!(
                             "Function `{name}` is declared as a function of return type `{return_ty}`, but body returns `{body_ty}`",
                         ),
@@ -521,7 +521,7 @@ impl SemanticChecker {
             ASTNodeType::FunCall { callee, args } => {
                 if self.context == Context::Root {
                     Err(vec![Diagnostic::new(
-                        self.path.display(),
+                        &self.path.display(),
                         "Function calls can't be a root-level item",
                         node.span,
                     )])
@@ -535,7 +535,7 @@ impl SemanticChecker {
                             let arg_ty = self.validate_node(arg, true, true)?;
                             if params_ty[i] != arg_ty {
                                 return Err(vec![Diagnostic::new(
-                                    self.path.display(),
+                                    &self.path.display(),
                                     format!(
                                         "Function has argument #{i} as type `{}` but found `{arg_ty}`",
                                         params_ty[i],
@@ -547,7 +547,7 @@ impl SemanticChecker {
                         Ok(*ty)
                     } else {
                         Err(vec![Diagnostic::new(
-                            self.path.display(),
+                            &self.path.display(),
                             format!("Identifier {callee} is not a function"),
                             node.span,
                         )])

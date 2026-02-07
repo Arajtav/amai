@@ -126,7 +126,7 @@ pub fn lex<'lex>(path: &str, source: &'lex str) -> Result<Vec<Token<'lex>>, Diag
                         tokens.push(tok);
                     } else {
                         return Err(Diagnostic::new(
-                            path,
+                            &path,
                             format!(
                                 "Unrecognized sequence of characters: `{:?}`",
                                 &source[tok_start..pos]
@@ -151,7 +151,7 @@ pub fn lex<'lex>(path: &str, source: &'lex str) -> Result<Vec<Token<'lex>>, Diag
                         tokens.push(tok);
                     } else {
                         return Err(Diagnostic::new(
-                            path,
+                            &path,
                             format!(
                                 "Unrecognized sequence of characters: `{:?}`",
                                 &source[tok_start..pos]
@@ -169,7 +169,7 @@ pub fn lex<'lex>(path: &str, source: &'lex str) -> Result<Vec<Token<'lex>>, Diag
                         tokens.push(tok);
                     } else {
                         return Err(Diagnostic::new(
-                            path,
+                            &path,
                             format!(
                                 "Unrecognized sequence of characters: `{:?}`",
                                 &source[tok_start..pos]
@@ -214,7 +214,7 @@ pub fn lex<'lex>(path: &str, source: &'lex str) -> Result<Vec<Token<'lex>>, Diag
                     }
                     if !terminated {
                         return Err(Diagnostic::new(
-                            path,
+                            &path,
                             "Unterminated block comment",
                             Span::from(tok_start..pos + 1),
                         ));
@@ -254,7 +254,7 @@ pub fn lex<'lex>(path: &str, source: &'lex str) -> Result<Vec<Token<'lex>>, Diag
                     tokens.push(tok);
                 } else {
                     return Err(Diagnostic::new(
-                        path,
+                        &path,
                         format!(
                             "Unrecognized sequence of characters: `{:?}`",
                             &source[tok_start..pos]
@@ -270,7 +270,7 @@ pub fn lex<'lex>(path: &str, source: &'lex str) -> Result<Vec<Token<'lex>>, Diag
 
     if in_string {
         return Err(Diagnostic::new(
-            path,
+            &path,
             format!(
                 "Unterminated string literal: `{:?}`",
                 &source[(tok_start + 1)..len]
@@ -285,7 +285,7 @@ pub fn lex<'lex>(path: &str, source: &'lex str) -> Result<Vec<Token<'lex>>, Diag
             tokens.push(tok);
         } else {
             return Err(Diagnostic::new(
-                path,
+                &path,
                 format!(
                     "Unrecognized sequence of characters: `{:?}`",
                     &source[tok_start..len]

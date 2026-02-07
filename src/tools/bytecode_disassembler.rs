@@ -7,7 +7,11 @@ pub fn disassemble(bytecode: &[u32]) -> String {
         macro_rules! get_arg {
             ($ty:ty, $pos:expr) => {{
                 const LEN: usize = std::mem::size_of::<$ty>() * 8;
-                const MASK: u32 = if LEN == 32 { u32::MAX } else { (1u32 << LEN) - 1 };
+                const MASK: u32 = if LEN == 32 {
+                    u32::MAX
+                } else {
+                    (1u32 << LEN) - 1
+                };
                 ((inst >> $pos) & MASK) as $ty
             }};
         }
