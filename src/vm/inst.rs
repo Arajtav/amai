@@ -58,7 +58,6 @@ pub enum Opcode {
 
     PArg = 0x25, // push arg (to caller args)
     CArg = 0x26, // copy arg (from caller args)
-    CExt = 0x27, // call external
 
     LShf = 0x28,
     RShf = 0x29,

@@ -27,17 +27,20 @@ macro_rules! encode {
     ($variant:ident) => {{
         Opcode::$variant as u32
     }};
-    ($variant:ident, [$($ty:ty : $val:expr),+ $(,)?]) => {{
-        let mut inst = Opcode::$variant as u32;
-        let mut shift = 8;
+    ($variant:ident, [$($ty:ty : $val:expr),+ $(,)?]) => {
+        #[allow(unused_assignments)]
+        {
+            let mut inst = Opcode::$variant as u32;
+            let mut shift = 8;
 
-        $(
-            inst = set_arg!(inst, $ty, shift, $val);
-            shift += std::mem::size_of::<$ty>() * 8;
-        )+
+            $(
+                inst = set_arg!(inst, $ty, shift, $val);
+                shift += std::mem::size_of::<$ty>() * 8;
+            )+
 
-        inst
-    }};
+            inst
+        }
+    };
 }
 
 pub struct ASTCompiler {
@@ -751,7 +754,7 @@ impl ASTCompiler {
                     _ => unreachable!(),
                 }
             }
-            ASTNodeType::LetDecl { name, ty, init } => {
+            ASTNodeType::LetDecl { name, init, .. } => {
                 let func = self.functions.get_mut(self.current_function).unwrap();
                 let (scope, next_available, sc_id) = func.scope.last_mut().unwrap();
                 let reg = *next_available;

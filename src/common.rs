@@ -1,5 +1,3 @@
-use std::fmt::Display;
-
 use crate::semantic_checker::types::Type;
 
 #[derive(Debug, Clone, Copy, PartialEq)]

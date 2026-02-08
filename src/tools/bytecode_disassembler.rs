@@ -21,6 +21,7 @@ pub fn disassemble(bytecode: &[u32]) -> String {
                 let mut shift = 8;
                 (
                     $(
+                        #[allow(unused_assignments)]
                         {
                             let val = get_arg!($ty, shift);
                             shift += std::mem::size_of::<$ty>() * 8;
@@ -110,10 +111,6 @@ pub fn disassemble(bytecode: &[u32]) -> String {
             Opcode::PArg => {
                 let src = get_arg!(u8, 8);
                 write_out!(" r{src}");
-            }
-            Opcode::CExt => {
-                let func = get_arg!(u32, 8);
-                write_out!(" ${func}");
             }
             Opcode::Nop | Opcode::Halt | Opcode::Retn => {}
         }

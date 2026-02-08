@@ -12,15 +12,12 @@ use inst::Opcode;
 use std::rc::Rc;
 use value::Value;
 
-pub type AmaiExtFn = Rc<dyn Fn(&mut AmaiVM, &[Value])>;
-
 pub struct AmaiVM {
     pub frames: Vec<CallFrame>,
     pub constants: Vec<Value>,
     pub running: bool,
     pub functions: Vec<(Rc<Function>, [Value; 64])>,
     pub allow_large_bytecode: bool,
-    pub external_functions: Vec<AmaiExtFn>,
     pub arena: Arena,
 }
 
@@ -32,7 +29,6 @@ impl AmaiVM {
             running: false,
             functions: Vec::new(),
             allow_large_bytecode,
-            external_functions: Vec::new(),
             arena: Arena::new(),
         }
     }
@@ -65,11 +61,6 @@ impl AmaiVM {
         new_vals
     }
 
-    pub fn add_extern_fn<F: Fn(&mut AmaiVM, &[Value]) + 'static>(&mut self, f: F) -> usize {
-        self.external_functions.push(Rc::new(f));
-        self.external_functions.len() - 1
-    }
-
     #[inline(always)]
     pub fn add_function(&mut self, bytecode: Box<[(u32, Span)]>, registers: &[Value]) -> usize {
         if !self.allow_large_bytecode {
@@ -97,11 +88,6 @@ impl AmaiVM {
         };
         self.frames.push(new_frame);
     }
-    #[inline(always)]
-    pub fn call_external(&mut self, id: usize, caller_args: &[Value]) {
-        let f = self.external_functions[id].clone();
-        f(self, caller_args);
-    }
 
     #[inline(always)]
     pub fn return_function(&mut self) {
@@ -115,7 +101,7 @@ impl AmaiVM {
     pub fn run(&mut self) -> Result<(), (String, Span)> {
         self.running = true;
         while self.running {
-            unsafe { self.cycle()? }
+            self.cycle()?;
         }
 
         Ok(())
@@ -151,6 +137,7 @@ impl AmaiVM {
                 let mut shift = 8;
                 (
                     $(
+                        #[allow(unused_assignments)]
                         {
                             let val = get_arg!($ty, shift);
                             shift += std::mem::size_of::<$ty>() * 8;
@@ -305,14 +292,6 @@ impl AmaiVM {
                 let arg_id = ((inst >> 16) & 0xFFFF) as usize;
 
                 frame.registers[((inst >> 8) & 0xFF) as usize] = frame.caller_args[arg_id];
-            }
-            Opcode::CExt => {
-                let id = (inst >> 8) & 0x00FF_FFFF;
-
-                let args = std::mem::take(&mut frame.callee_args);
-                frame.ip = next_ip;
-                self.call_external(id as usize, &args);
-                return Ok(());
             }
             Opcode::LShf => reg_8_8_8_map!(lshf),
             Opcode::RShf => reg_8_8_8_map!(rshf),

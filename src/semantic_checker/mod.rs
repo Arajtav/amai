@@ -123,7 +123,7 @@ impl SemanticChecker {
             name,
             params,
             return_ty,
-            body,
+            ..
         } = &node.ty
         {
             let params_ty = params
@@ -148,7 +148,7 @@ impl SemanticChecker {
                 name,
                 params,
                 return_ty,
-                body,
+                ..
             } => {
                 let params_ty = params
                     .iter()

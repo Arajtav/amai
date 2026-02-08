@@ -1,8 +1,5 @@
 use crate::common::Span;
-use std::{
-    fmt::Write as _,
-    ops::{Range, RangeInclusive},
-};
+use std::{fmt::Write as _, ops::RangeInclusive};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Diagnostic {
@@ -30,14 +27,14 @@ pub fn create_src_ref(
 ) {
     use colored::Colorize;
 
-    writeln!(
+    _ = writeln!(
         output,
         "{}{} {}",
         " ".repeat(digits_len as usize + 1),
         "┌──".cyan().bold(),
         format!("{}:{}:{}", path, lines_range.start() + 1, start_col + 1).italic()
     );
-    writeln!(
+    _ = writeln!(
         output,
         "{:w$} {}",
         " ",
@@ -51,8 +48,7 @@ pub fn create_src_ref(
         .take(lines_range.end() + 1)
         .skip(*lines_range.start())
     {
-        let ltxt = lines[l_id];
-        writeln!(
+        _ = writeln!(
             output,
             "{:w$} {} {ltxt}",
             (l_id + 1).to_string().cyan().bold(),
@@ -82,7 +78,7 @@ pub fn create_src_ref(
         } else {
             carets.push_str(&"^".repeat(ltxt.len()).bright_red().bold().to_string());
         }
-        writeln!(
+        _ = writeln!(
             output,
             "{:w$} {} {}",
             " ",
@@ -92,7 +88,7 @@ pub fn create_src_ref(
         );
     }
 
-    writeln!(
+    _ = writeln!(
         output,
         "{:w$} {}",
         " ",
@@ -112,7 +108,7 @@ pub fn create_src_ref_without_path(
 ) {
     use colored::Colorize;
 
-    writeln!(
+    _ = writeln!(
         output,
         "{:w$} {}",
         " ",
@@ -121,7 +117,7 @@ pub fn create_src_ref_without_path(
     );
 
     for (l_id, ltxt) in lines.iter().enumerate().take(end_line + 1).skip(start_line) {
-        writeln!(
+        _ = writeln!(
             output,
             "{:w$} {} {ltxt}",
             (l_id + 1).to_string().cyan().bold(),
@@ -151,7 +147,7 @@ pub fn create_src_ref_without_path(
         } else {
             carets.push_str(&"^".repeat(ltxt.len()).bright_red().bold().to_string());
         }
-        writeln!(
+        _ = writeln!(
             output,
             "{:w$} {} {}",
             " ",
@@ -161,7 +157,7 @@ pub fn create_src_ref_without_path(
         );
     }
 
-    writeln!(
+    _ = writeln!(
         output,
         "{:w$} {}",
         " ",
@@ -207,7 +203,7 @@ impl Diagnostic {
 
         let digits_len = (end_line + 1).ilog10() + 1;
 
-        writeln!(
+        _ = writeln!(
             output,
             "{}: {}",
             "error".bright_red().bold(),

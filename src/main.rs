@@ -1,4 +1,3 @@
-#![allow(unused)]
 #![allow(clippy::inline_always)]
 #![allow(clippy::missing_errors_doc)]
 #![allow(clippy::too_many_lines)]
